@@ -1,0 +1,48 @@
+name: Build SHADOW DJ Android APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download repository
+        uses: actions/checkout@v4
+
+      - name: Unzip SHADOW DJ Android project
+        run: |
+          mkdir android-project
+          unzip -q SHADOW_DJ_GitHub_Phone_Upload.zip -d android-project
+          echo "Files found:"
+          find android-project -maxdepth 5 -type f | head -200
+
+      - name: Find Android project
+        id: project
+        run: |
+          PROJECT_ROOT=$(dirname "$(find android-project -name settings.gradle.kts -o -name settings.gradle | head -n 1)")
+          echo "PROJECT_ROOT=$PROJECT_ROOT"
+          echo "root=$PROJECT_ROOT" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Build SHADOW DJ APK
+        working-directory: ${{ steps.project.outputs.root }}
+        run: gradle assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SHADOW-DJ-APK
+          path: |
+            ${{ steps.project.outputs.root }}/**/build/outputs/apk/debug/*.apk
