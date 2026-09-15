@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#08080d">
+<title>SHADOW DJ — Personal Edition</title>
+<style>
+:root{--bg:#07070b;--panel:#111119;--panel2:#181823;--line:#292938;--text:#f5f5fa;--muted:#9d9dab;--accent:#b79cff;--accent2:#7c5cff}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:radial-gradient(circle at 50% -10%,#24203c 0,#0a0910 38%,#050509 100%);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.app{max-width:760px;margin:auto;padding:12px 10px 28px}
+header{display:flex;align-items:center;justify-content:space-between;padding:7px 4px 12px}
+.brand{font-weight:900;letter-spacing:2px;font-size:20px}.sub{font-size:10px;color:var(--muted);letter-spacing:1.2px}
+.badge{font-size:10px;border:1px solid var(--line);padding:6px 8px;border-radius:999px;color:#c9c1e8}
+.decks{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.deck,.mixer{background:linear-gradient(180deg,#14141e,#0e0e15);border:1px solid var(--line);border-radius:18px;padding:10px;box-shadow:0 12px 35px #0007}
+.deck h2{margin:0;font-size:12px;letter-spacing:1.5px}.track{margin-top:6px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#ddd}
+.file{width:100%;font-size:11px;margin:8px 0;color:var(--muted)}
+input[type=file]{width:100%}
+canvas{width:100%;height:74px;background:#090910;border:1px solid #252535;border-radius:10px;margin:7px 0;display:block}
+.row{display:flex;gap:5px;align-items:center}.row>*{min-width:0}
+button{border:1px solid #333344;background:#1a1a25;color:#eee;border-radius:10px;padding:9px 7px;font-weight:750;font-size:10px;letter-spacing:.4px;flex:1}
+button:active{transform:scale(.98);background:#242434}.on{border-color:var(--accent);box-shadow:0 0 0 1px #8d6cff55 inset}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.small{font-size:10px;color:var(--muted)}.time{display:flex;justify-content:space-between;font-variant-numeric:tabular-nums;font-size:10px;color:#bbb}
+.bpmrow{display:flex;gap:5px;align-items:center;margin:5px 0}.bpmrow input{width:62px;background:#09090e;border:1px solid #343445;color:white;border-radius:8px;padding:7px;font-size:12px}
+.eq{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:7px}.eq label{font-size:9px;color:var(--muted);text-align:center}.eq input{width:100%}
+.mixer{margin-top:9px;padding:12px}.mixer h3{margin:0 0 6px;font-size:11px;letter-spacing:1.4px}.mixline{display:flex;align-items:center;gap:9px}.mixline span{font-size:10px;color:#bbb;width:25px}.mixline input{flex:1}
+.master{margin-top:10px}.master label{font-size:10px;color:var(--muted)}
+.info{margin-top:10px;text-align:center;color:#88889a;font-size:9px;line-height:1.45}
+@media(max-width:430px){.decks{gap:6px}.deck{padding:8px;border-radius:15px}button{padding:8px 4px;font-size:9px}.brand{font-size:18px}}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <div><div class="brand">SHADOW DJ</div><div class="sub">PERSONAL EDITION • MRDARKLORD</div></div>
+  <div class="badge">PHONE MIXER</div>
+</header>
+
+
+<div id="sourceModal" style="display:none;position:fixed;inset:0;background:#000b;z-index:99;padding:18px;align-items:flex-end">
+  <div style="width:100%;max-width:760px;margin:auto;background:#12121b;border:1px solid #343446;border-radius:20px;padding:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <b style="letter-spacing:1px">CHOOSE MUSIC SOURCE</b>
+      <button id="closeSource" style="flex:0 0 auto">CLOSE</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px">
+      <button id="sourceFiles">📱 MY MUSIC / FILES</button>
+      <button id="sourceDropbox">☁️ DROPBOX</button>
+      <button id="sourceYoutube">▶️ YOUTUBE</button>
+      <button id="sourceJango">🎵 JANGO</button>
+    </div>
+    <div id="sourceHelp" style="margin-top:12px;color:#aaa;font-size:11px;line-height:1.5"></div>
+    <div id="ytBox" style="display:none;margin-top:10px">
+      <input id="ytUrl" placeholder="Paste a YouTube video URL" style="width:100%;padding:10px;border-radius:9px;border:1px solid #343445;background:#09090e;color:white">
+      <button id="ytOpen" style="width:100%;margin-top:7px">OPEN SUPPORTED YOUTUBE PLAYER</button>
+      <div id="ytFrame" style="margin-top:9px"></div>
+    </div>
+  </div>
+</div>
+<div style="margin:0 0 9px">
+  <button id="musicSources" style="width:100%;padding:12px;font-size:11px;letter-spacing:1px">🎧 MUSIC SOURCES • FILES / DROPBOX / YOUTUBE / JANGO</button>
+</div>
+<div class="decks">
+<section class="deck" id="deckA">
+  <h2>DECK A</h2><div class="track" id="nameA">No track loaded</div>
+  <input class="file" id="fileA" type="file" accept="audio/*">
+  <canvas id="waveA"></canvas>
+  <div class="time"><span id="curA">0:00</span><span id="durA">0:00</span></div>
+  <input id="seekA" type="range" min="0" max="100" value="0" step=".01">
+  <div class="row"><button id="playA">PLAY</button><button id="cueA">CUE</button><button id="syncA">SYNC</button></div>
+  <div class="bpmrow"><span class="small">BPM</span><input id="bpmA" type="number" min="40" max="240" value="120"><button id="detectA">DETECT</button></div>
+  <div class="row"><button class="loopBtn" data-deck="A" data-beats="4">4 BEAT</button><button class="loopBtn" data-deck="A" data-beats="8">8 BEAT</button><button class="loopBtn" data-deck="A" data-beats="16">16 BEAT</button></div>
+  <div class="eq">
+    <label>BASS<input id="bassA" type="range" min="-12" max="12" value="0"></label>
+    <label>MID<input id="midA" type="range" min="-12" max="12" value="0"></label>
+    <label>TREBLE<input id="trebleA" type="range" min="-12" max="12" value="0"></label>
+  </div>
+  <div class="small">TEMPO <span id="tempoValA">1.00x</span></div><input id="tempoA" type="range" min=".5" max="1.5" step=".01" value="1">
+  <div class="small">VOLUME</div><input id="volA" type="range" min="0" max="1" step=".01" value="1">
+</section>
+
+<section class="deck" id="deckB">
+  <h2>DECK B</h2><div class="track" id="nameB">No track loaded</div>
+  <input class="file" id="fileB" type="file" accept="audio/*">
+  <canvas id="waveB"></canvas>
+  <div class="time"><span id="curB">0:00</span><span id="durB">0:00</span></div>
+  <input id="seekB" type="range" min="0" max="100" value="0" step=".01">
+  <div class="row"><button id="playB">PLAY</button><button id="cueB">CUE</button><button id="syncB">SYNC</button></div>
+  <div class="bpmrow"><span class="small">BPM</span><input id="bpmB" type="number" min="40" max="240" value="120"><button id="detectB">DETECT</button></div>
+  <div class="row"><button class="loopBtn" data-deck="B" data-beats="4">4 BEAT</button><button class="loopBtn" data-deck="B" data-beats="8">8 BEAT</button><button class="loopBtn" data-deck="B" data-beats="16">16 BEAT</button></div>
+  <div class="eq">
+    <label>BASS<input id="bassB" type="range" min="-12" max="12" value="0"></label>
+    <label>MID<input id="midB" type="range" min="-12" max="12" value="0"></label>
+    <label>TREBLE<input id="trebleB" type="range" min="-12" max="12" value="0"></label>
+  </div>
+  <div class="small">TEMPO <span id="tempoValB">1.00x</span></div><input id="tempoB" type="range" min=".5" max="1.5" step=".01" value="1">
+  <div class="small">VOLUME</div><input id="volB" type="range" min="0" max="1" step=".01" value="1">
+</section>
+</div>
+
+<section class="mixer">
+  <h3>MIXER</h3>
+  <div class="mixline"><span>A</span><input id="cross" type="range" min="0" max="1" step=".01" value=".5"><span>B</span></div>
+  <div class="master"><label>MASTER VOLUME</label><input id="master" type="range" min="0" max="1" step=".01" value=".9"></div>
+  <div class="row" style="margin-top:8px"><button id="pauseAll">PAUSE ALL</button><button id="resetMix">RESET MIX</button><button id="rec">REC</button></div>
+</section>
+
+<div class="info">
+  Local audio only in this phone prototype. BPM detection is an estimate and can be corrected manually.<br>
+  SYNC matches tempo; it is not full beat-grid phase sync. Browser background audio can vary when another live app is opened.
+</div>
+</div>
+
+<script>
+const A={id:'A',audio:new Audio(),cue:0,loop:null,buffer:null,source:null};
+const B={id:'B',audio:new Audio(),cue:0,loop:null,buffer:null,source:null};
+const ctx=new (window.AudioContext||window.webkitAudioContext)();
+const master=ctx.createGain(); master.gain.value=.9; master.connect(ctx.destination);
+
+function setup(d){
+  d.audio.preload='metadata'; d.audio.playsInline=true;
+  d.bass=ctx.createBiquadFilter(); d.bass.type='lowshelf'; d.bass.frequency.value=180;
+  d.mid=ctx.createBiquadFilter(); d.mid.type='peaking'; d.mid.frequency.value=1000; d.mid.Q.value=.9;
+  d.treble=ctx.createBiquadFilter(); d.treble.type='highshelf'; d.treble.frequency.value=4500;
+  d.gain=ctx.createGain(); d.gain.gain.value=.5;
+  d.source=ctx.createMediaElementSource(d.audio);
+  d.source.connect(d.bass).connect(d.mid).connect(d.treble).connect(d.gain).connect(master);
+}
+setup(A);setup(B);
+
+function el(id){return document.getElementById(id)}
+function fmt(s){if(!isFinite(s))return'0:00';let m=Math.floor(s/60),x=Math.floor(s%60);return m+':'+String(x).padStart(2,'0')}
+function deck(d){
+  const x=d.id;
+  return {name:el('name'+x),file:el('file'+x),wave:el('wave'+x),seek:el('seek'+x),cur:el('cur'+x),dur:el('dur'+x),
+    play:el('play'+x),cue:el('cue'+x),bpm:el('bpm'+x),detect:el('detect'+x),tempo:el('tempo'+x),tempoVal:el('tempoVal'+x),
+    vol:el('vol'+x),bass:el('bass'+x),mid:el('mid'+x),treble:el('treble'+x),sync:el('sync'+x)}
+}
+const uiA=deck(A),uiB=deck(B);
+
+function redraw(d,pos=0){
+ const c=deck(d).wave, r=c.getBoundingClientRect(), w=Math.max(300,Math.floor(r.width*devicePixelRatio)),h=Math.max(100,Math.floor(r.height*devicePixelRatio));
+ c.width=w;c.height=h;let g=c.getContext('2d');g.clearRect(0,0,w,h);g.fillStyle='#0b0b12';g.fillRect(0,0,w,h);
+ g.strokeStyle='#343044';g.beginPath();g.moveTo(0,h/2);g.lineTo(w,h/2);g.stroke();
+ if(d.buffer){let data=d.buffer.getChannelData(0), step=Math.max(1,Math.floor(data.length/w)), mid=h/2;
+   g.fillStyle='#a993ff';
+   for(let i=0;i<w;i++){let max=0;for(let j=0;j<step;j++){let v=Math.abs(data[i*step+j]||0);if(v>max)max=v}let hh=max*(h*.44);g.fillRect(i,mid-hh,1,Math.max(1,hh*2))}
+ }
+ g.fillStyle='#fff';g.fillRect(Math.max(0,Math.min(w-2,pos*w)),0,2,h);
+}
+
+function updateUI(d){
+ const u=deck(d), a=d.audio;
+ u.cur.textContent=fmt(a.currentTime);u.dur.textContent=fmt(a.duration);
+ u.seek.value=isFinite(a.duration)&&a.duration?a.currentTime/a.duration*100:0;
+ redraw(d,isFinite(a.duration)&&a.duration?a.currentTime/a.duration:0);
+ u.play.textContent=a.paused?'PLAY':'PAUSE';
+}
+function wire(d){
+ const u=deck(d);
+ u.file.onchange=async e=>{
+   let f=e.target.files[0];if(!f)return;
+   if(d.url)URL.revokeObjectURL(d.url); d.url=URL.createObjectURL(f); d.audio.src=d.url;d.audio.load();
+   u.name.textContent=f.name;d.cue=0;d.loop=null;
+   try{let ab=await f.arrayBuffer();d.buffer=await ctx.decodeAudioData(ab.slice(0));redraw(d)}catch(err){}
+ };
+ u.play.onclick=async()=>{await ctx.resume(); if(d.audio.paused)await d.audio.play();else d.audio.pause();};
+ u.cue.onclick=()=>{if(d.audio.currentTime>0)d.cue=d.audio.currentTime;else d.cue=0; d.audio.currentTime=d.cue;};
+ u.seek.oninput=()=>{if(isFinite(d.audio.duration))d.audio.currentTime=(u.seek.value/100)*d.audio.duration};
+ u.tempo.oninput=()=>{let v=+u.tempo.value;u.tempoVal.textContent=v.toFixed(2)+'x';d.audio.playbackRate=v;if('preservesPitch'in d.audio)d.audio.preservesPitch=true};
+ u.vol.oninput=()=>updateGains();
+ [u.bass,u.mid,u.treble].forEach((q,i)=>q.oninput=()=>{[d.bass,d.mid,d.treble][i].gain.value=+q.value});
+ u.sync.onclick=()=>syncToOther(d);
+ u.detect.onclick=()=>{if(d.buffer){let bpm=estimateBPM(d.buffer);if(bpm)u.bpm.value=Math.round(bpm)}};
+ d.audio.addEventListener('loadedmetadata',()=>{u.dur.textContent=fmt(d.audio.duration);redraw(d)});
+ d.audio.addEventListener('timeupdate',()=>{if(d.loop&&d.audio.currentTime>=d.loop.end){d.audio.currentTime=d.loop.start}updateUI(d)});
+ d.audio.addEventListener('ended',()=>{d.loop=null;updateUI(d)});
+}
+wire(A);wire(B);
+
+function updateGains(){
+ let x=+el('cross').value, masterV=+el('master').value;
+ A.gain.gain.value=(1-x)*+uiA.vol.value; B.gain.gain.value=x*+uiB.vol.value; master.gain.value=masterV;
+}
+el('cross').oninput=updateGains;el('master').oninput=updateGains;updateGains();
+
+document.querySelectorAll('.loopBtn').forEach(b=>b.onclick=()=>{
+ const d=b.dataset.deck==='A'?A:B, beats=+b.dataset.beats,u=deck(d);
+ if(d.loop){d.loop=null;b.classList.remove('on');return}
+ let bpm=Math.max(40,Math.min(240,+u.bpm.value||120)),len=beats*60/bpm,start=d.audio.currentTime;
+ d.loop={start,end:Math.min((d.audio.duration||start+len),start+len)};b.classList.add('on');
+});
+
+function syncToOther(d){
+ const other=d===A?B:A, target=+deck(d).bpm.value||120, src=+deck(other).bpm.value||120;
+ let rate=target/src;rate=Math.max(.5,Math.min(1.5,rate));deck(other).tempo.value=rate;deck(other).tempoVal.textContent=rate.toFixed(2)+'x';other.audio.playbackRate=rate;if('preservesPitch'in other.audio)other.audio.preservesPitch=true;
+}
+
+function estimateBPM(buf){
+ const sr=buf.sampleRate, ch=buf.numberOfChannels, maxSec=Math.min(45,buf.duration), hop=Math.floor(sr*.10), n=Math.floor(maxSec*sr), env=[];
+ for(let i=0;i<n;i+=hop){let sum=0,c=0;for(let j=i;j<Math.min(i+hop,n);j+=8){let v=0;for(let k=0;k<ch;k++)v+=buf.getChannelData(k)[j]||0;v/=ch;sum+=v*v;c++}env.push(Math.sqrt(sum/Math.max(1,c)))}
+ let mean=env.reduce((a,b)=>a+b,0)/env.length;for(let i=0;i<env.length;i++)env[i]=Math.max(0,env[i]-mean);
+ let best={score:-1,bpm:120};
+ for(let bpm=60;bpm<=180;bpm++){let lag=Math.round((60/bpm)/.1),score=0;for(let i=lag;i<env.length;i++)score+=env[i]*env[i-lag];if(score>best.score)best={score,bpm}}
+ return best.bpm;
+}
+
+el('pauseAll').onclick=()=>{A.audio.pause();B.audio.pause()};el('resetMix').onclick=()=>{el('cross').value=.5;el('master').value=.9;uiA.vol.value=1;uiB.vol.value=1;updateGains()};
+el('rec').onclick=()=>alert('Mix recording is planned for the next native build. This phone prototype does not save recordings yet.');
+
+window.addEventListener('resize',()=>{redraw(A,A.audio.currentTime/(A.audio.duration||1));redraw(B,B.audio.currentTime/(B.audio.duration||1))});
+redraw(A);redraw(B);
+
+// Music source picker
+const modal=document.getElementById('sourceModal'), help=document.getElementById('sourceHelp'), ytBox=document.getElementById('ytBox');
+document.getElementById('musicSources').onclick=()=>{modal.style.display='flex';help.textContent='Choose where your music comes from. Local files work directly with both decks.'};
+document.getElementById('closeSource').onclick=()=>modal.style.display='none';
+document.getElementById('sourceFiles').onclick=()=>{
+  ytBox.style.display='none';help.textContent='Use the file picker on Deck A or Deck B to load music stored on your phone.';
+  modal.style.display='none';
+  setTimeout(()=>document.getElementById('fileA').click(),150);
+};
+document.getElementById('sourceDropbox').onclick=()=>{
+  ytBox.style.display='none';
+  help.innerHTML='Dropbox requires a Dropbox account connection/OAuth. This prototype cannot safely connect your private Dropbox account without your authorization and an app configuration. Your local files remain fully supported.';
+};
+document.getElementById('sourceJango').onclick=()=>{
+  ytBox.style.display='none';
+  help.innerHTML='Opening Jango in a new browser tab. Jango supports web playback and also offers an Android app. The Jango player stays separate from SHADOW DJ decks.';
+  window.open('https://www.jango.com/','_blank','noopener');
+};
+document.getElementById('sourceYoutube').onclick=()=>{
+  ytBox.style.display='block';
+  help.innerHTML='YouTube can be opened through its supported player. The YouTube player remains separate from the local two-deck mixer; this avoids bypassing YouTube playback rules.';
+};
+document.getElementById('ytOpen').onclick=()=>{
+  const raw=document.getElementById('ytUrl').value.trim();
+  let id='';
+  try{
+    const u=new URL(raw);
+    if(u.hostname.includes('youtu.be')) id=u.pathname.slice(1);
+    else if(u.hostname.includes('youtube.com')) id=u.searchParams.get('v')||'';
+  }catch(e){}
+  if(!id){document.getElementById('ytFrame').innerHTML='<div style="color:#ffb4b4;font-size:11px">Please paste a normal YouTube video URL.</div>';return}
+  document.getElementById('ytFrame').innerHTML='<iframe width="100%" height="210" style="border:0;border-radius:12px" src="https://www.youtube.com/embed/'+encodeURIComponent(id)+'" title="YouTube player" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>';
+};
+
+</script>
+</body>
+</html>
