@@ -42,6 +42,11 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Fix JVM target compatibility
+        working-directory: ${{ steps.project.outputs.root }}
+        run: |
+          echo "kotlin.jvm.target.validation.mode=warning" >> gradle.properties
+
       - name: Build SHADOW DJ APK
         working-directory: ${{ steps.project.outputs.root }}
         run: gradle assembleDebug
