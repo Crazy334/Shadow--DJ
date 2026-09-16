@@ -29,155 +29,511 @@ jobs:
           MAIN=$(find app/src/main/java -name MainActivity.kt | head -n 1)
 
           cat > "$MAIN" <<'KOTLIN'
-package com.shadowdj.app
+          package com.shadowdj.app
 
-import android.content.ComponentName
-import android.content.Intent
-import android.content.ServiceConnection
-import android.net.Uri
-import android.os.Bundle
-import android.os.IBinder
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+          import android.content.ComponentName
+          import android.content.Intent
+          import android.content.ServiceConnection
+          import android.net.Uri
+          import android.os.Bundle
+          import android.os.IBinder
+          import androidx.activity.ComponentActivity
+          import androidx.activity.compose.setContent
+          import androidx.activity.result.contract.ActivityResultContracts
+          import androidx.compose.foundation.background
+          import androidx.compose.foundation.layout.*
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.material3.*
+          import androidx.compose.runtime.*
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
 
-class MainActivity : ComponentActivity() {
-    private var djService: PlaybackService? = null
-    private var bound = false
+          class MainActivity : ComponentActivity() {
 
-    private var pendingDeck = "A"
+              private var djService: PlaybackService? = null
+              private var bound = false
+              private var pendingDeck = "A"
 
-    private val picker =
-        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-            uri ?: return@registerForActivityResult
-            contentResolver.takePersistableUriPermission(
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
+              private val picker =
+                  registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+                      uri ?: return@registerForActivityResult
 
-            if (pendingDeck == "A") {
-                djService?.loadA(uri.toString())
-            } else {
-                djService?.loadB(uri.toString())
-            }
-        }
+                      contentResolver.takePersistableUriPermission(
+                          uri,
+                          Intent.FLAG_GRANT_READ_URI_PERMISSION
+                      )
 
-    private val connection = object : ServiceConnection {
-        override fun onServiceConnected(
-            name: ComponentName?,
-            service: IBinder?
-        ) {
-            djService =
-                (service as? PlaybackService.LocalBinder)?.service()
-            bound = true
-        }
+                      if (pendingDeck == "A") {
+                          djService?.loadA(uri.toString())
+                      } else {
+                          djService?.loadB(uri.toString())
+                      }
+                  }
 
-        override fun onServiceDisconnected(name: ComponentName?) {
-            bound = false
-            djService = null
-        }
-    }
+              private val connection = object : ServiceConnection {
 
-    private fun openJango() {
-        startActivity(
-            Intent(
-                Intent.ACTION_VIEW,
-                Uri.parse("https://www.jango.com/")
-            )
-        )
-    }
+                  override fun onServiceConnected(
+                      name: ComponentName?,
+                      service: IBinder?
+                  ) {
+                      djService =
+                          (service as? PlaybackService.LocalBinder)?.service()
+                      bound = true
+                  }
 
-    private fun openYouTube() {
-        startActivity(
-            Intent(
-                Intent.ACTION_VIEW,
-                Uri.parse("https://m.youtube.com/")
-            )
-        )
-    }
+                  override fun onServiceDisconnected(name: ComponentName?) {
+                      bound = false
+                      djService = null
+                  }
+              }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+              private fun openJango() {
+                  startActivity(
+                      Intent(
+                          Intent.ACTION_VIEW,
+                          Uri.parse("https://www.jango.com/")
+                      )
+                  )
+              }
 
-        val intent = Intent(this, PlaybackService::class.java).apply {
-            action = PlaybackService.ACTION_BIND_DJ
-        }
+              private fun openYouTube() {
+                  startActivity(
+                      Intent(
+                          Intent.ACTION_VIEW,
+                          Uri.parse("https://m.youtube.com/")
+                      )
+                  )
+              }
 
-        startService(intent)
-        bindService(intent, connection, BIND_AUTO_CREATE)
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
 
-        setContent {
-            ShadowDJScreen(
-                onLoadA = {
-                    pendingDeck = "A"
-                    picker.launch(arrayOf("audio/*"))
-                },
-                onLoadB = {
-                    pendingDeck = "B"
-                    picker.launch(arrayOf("audio/*"))
-                },
-                onJango = { openJango() },
-                onYouTube = { openYouTube() },
-                onPlayA = { djService?.deckA?.play() },
-                onPauseA = { djService?.deckA?.pause() },
-                onPlayB = { djService?.deckB?.play() },
-                onPauseB = { djService?.deckB?.pause() },
-                onCrossfader = { djService?.setCrossfader(it) }
-            )
-        }
-    }
+                  val serviceIntent =
+                      Intent(this, PlaybackService::class.java).apply {
+                          action = PlaybackService.ACTION_BIND_DJ
+                      }
 
-    override fun onDestroy() {
-        if (bound) {
-            unbindService(connection)
-        }
-        super.onDestroy()
-    }
-}
+                  startService(serviceIntent)
+                  bindService(
+                      serviceIntent,
+                      connection,
+                      BIND_AUTO_CREATE
+                  )
 
-@Composable
-fun ShadowDJScreen(
-    onLoadA: () -> Unit,
-    onLoadB: () -> Unit,
-    onJango: () -> Unit,
-    onYouTube: () -> Unit,
-    onPlayA: () -> Unit,
-    onPauseA: () -> Unit,
-    onPlayB: () -> Unit,
-    onPauseB: () -> Unit,
-    onCrossfader: (Float) -> Unit
-) {
-    var crossfader by remember { mutableFloatStateOf(0.5f) }
-    var playingA by remember { mutableStateOf(false) }
-    var playingB by remember { mutableStateOf(false) }
+                  setContent {
+                      ShadowDJScreen(
+                          onLoadA = {
+                              pendingDeck = "A"
+                              picker.launch(arrayOf("audio/*"))
+                          },
+                          onLoadB = {
+                              pendingDeck = "B"
+                              picker.launch(arrayOf("audio/*"))
+                          },
+                          onJango = { openJango() },
+                          onYouTube = { openYouTube() },
+                          onPlayA = {
+                              djService?.deckA?.play()
+                          },
+                          onPauseA = {
+                              djService?.deckA?.pause()
+                          },
+                          onPlayB = {
+                              djService?.deckB?.play()
+                          },
+                          onPauseB = {
+                              djService?.deckB?.pause()
+                          },
+                          onCrossfader = {
+                              djService?.setCrossfader(it)
+                          }
+                      )
+                  }
+              }
 
-    MaterialTheme(colorScheme = darkColorScheme()) {
-        Surface(
-            Modifier.fillMaxSize(),
-            color = Color(0xFF080808)
-        ) {
-            Column(
-                Modifier
-                    .fillMaxSize()
-                    .padding(16.dp)
-            ) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            "SHADOW DJ",
-                            fontSize =
+              override fun onDestroy() {
+                  if (bound) {
+                      unbindService(connection)
+                  }
+
+                  super.onDestroy()
+              }
+          }
+
+          @Composable
+          fun ShadowDJScreen(
+              onLoadA: () -> Unit,
+              onLoadB: () -> Unit,
+              onJango: () -> Unit,
+              onYouTube: () -> Unit,
+              onPlayA: () -> Unit,
+              onPauseA: () -> Unit,
+              onPlayB: () -> Unit,
+              onPauseB: () -> Unit,
+              onCrossfader: (Float) -> Unit
+          ) {
+
+              var crossfader by remember {
+                  mutableFloatStateOf(0.5f)
+              }
+
+              var playingA by remember {
+                  mutableStateOf(false)
+              }
+
+              var playingB by remember {
+                  mutableStateOf(false)
+              }
+
+              MaterialTheme(
+                  colorScheme = darkColorScheme()
+              ) {
+
+                  Surface(
+                      modifier = Modifier.fillMaxSize(),
+                      color = Color(0xFF080808)
+                  ) {
+
+                      Column(
+                          modifier = Modifier
+                              .fillMaxSize()
+                              .padding(16.dp)
+                      ) {
+
+                          Row(
+                              modifier = Modifier.fillMaxWidth(),
+                              horizontalArrangement =
+                                  Arrangement.SpaceBetween,
+                              verticalAlignment =
+                                  Alignment.CenterVertically
+                          ) {
+
+                              Column {
+
+                                  Text(
+                                      "SHADOW DJ",
+                                      fontSize = 28.sp,
+                                      fontWeight = FontWeight.Black
+                                  )
+
+                                  Text(
+                                      "MRDARKLORD",
+                                      color = Color.LightGray,
+                                      fontSize = 13.sp
+                                  )
+                              }
+
+                              Text(
+                                  "PHASE 3",
+                                  color = Color.Gray
+                              )
+                          }
+
+                          Spacer(
+                              modifier = Modifier.height(14.dp)
+                          )
+
+                          Row(
+                              modifier = Modifier.fillMaxWidth(),
+                              horizontalArrangement =
+                                  Arrangement.spacedBy(12.dp)
+                          ) {
+
+                              DeckCard(
+                                  title = "DECK A",
+                                  playing = playingA,
+                                  onLoad = onLoadA,
+                                  onJango = onJango,
+                                  onYouTube = onYouTube,
+                                  onPlay = {
+                                      playingA = true
+                                      onPlayA()
+                                  },
+                                  onPause = {
+                                      playingA = false
+                                      onPauseA()
+                                  }
+                              )
+
+                              DeckCard(
+                                  title = "DECK B",
+                                  playing = playingB,
+                                  onLoad = onLoadB,
+                                  onJango = onJango,
+                                  onYouTube = onYouTube,
+                                  onPlay = {
+                                      playingB = true
+                                      onPlayB()
+                                  },
+                                  onPause = {
+                                      playingB = false
+                                      onPauseB()
+                                  }
+                              )
+                          }
+
+                          Spacer(
+                              modifier = Modifier.height(18.dp)
+                          )
+
+                          Card(
+                              modifier = Modifier.fillMaxWidth(),
+                              shape = RoundedCornerShape(20.dp),
+                              colors = CardDefaults.cardColors(
+                                  containerColor = Color(0xFF151515)
+                              )
+                          ) {
+
+                              Column(
+                                  modifier = Modifier.padding(18.dp)
+                              ) {
+
+                                  Text(
+                                      "MIXER",
+                                      fontWeight = FontWeight.Bold,
+                                      fontSize = 18.sp
+                                  )
+
+                                  Spacer(
+                                      modifier = Modifier.height(10.dp)
+                                  )
+
+                                  Text("CROSSFADER")
+
+                                  Slider(
+                                      value = crossfader,
+                                      onValueChange = {
+                                          crossfader = it
+                                          onCrossfader(it)
+                                      }
+                                  )
+
+                                  Row(
+                                      modifier = Modifier.fillMaxWidth(),
+                                      horizontalArrangement =
+                                          Arrangement.SpaceBetween
+                                  ) {
+
+                                      Text(
+                                          "A",
+                                          color = Color.Gray
+                                      )
+
+                                      Text(
+                                          "CENTER",
+                                          color = Color.Gray
+                                      )
+
+                                      Text(
+                                          "B",
+                                          color = Color.Gray
+                                      )
+                                  }
+
+                                  Spacer(
+                                      modifier = Modifier.height(8.dp)
+                                  )
+
+                                  Row(
+                                      modifier = Modifier.fillMaxWidth(),
+                                      horizontalArrangement =
+                                          Arrangement.spacedBy(8.dp)
+                                  ) {
+
+                                      OutlinedButton(
+                                          onClick = {}
+                                      ) {
+                                          Text("CUE")
+                                      }
+
+                                      OutlinedButton(
+                                          onClick = {}
+                                      ) {
+                                          Text("FX")
+                                      }
+
+                                      OutlinedButton(
+                                          onClick = {}
+                                      ) {
+                                          Text("SYNC")
+                                      }
+
+                                      OutlinedButton(
+                                          onClick = {}
+                                      ) {
+                                          Text("REC")
+                                      }
+                                  }
+                              }
+                          }
+
+                          Spacer(
+                              modifier = Modifier.height(14.dp)
+                          )
+
+                          Card(
+                              modifier = Modifier.fillMaxWidth(),
+                              shape = RoundedCornerShape(20.dp),
+                              colors = CardDefaults.cardColors(
+                                  containerColor = Color(0xFF151515)
+                              )
+                          ) {
+
+                              Column(
+                                  modifier = Modifier.padding(18.dp)
+                              ) {
+
+                                  Text(
+                                      "MUSIC SOURCES",
+                                      fontWeight = FontWeight.Bold,
+                                      fontSize = 18.sp
+                                  )
+
+                                  Spacer(
+                                      modifier = Modifier.height(8.dp)
+                                  )
+
+                                  Text(
+                                      "Choose an online music source.",
+                                      color = Color.LightGray,
+                                      fontSize = 13.sp
+                                  )
+
+                                  Spacer(
+                                      modifier = Modifier.height(10.dp)
+                                  )
+
+                                  Row(
+                                      modifier = Modifier.fillMaxWidth(),
+                                      horizontalArrangement =
+                                          Arrangement.spacedBy(8.dp)
+                                  ) {
+
+                                      OutlinedButton(
+                                          onClick = onJango,
+                                          modifier = Modifier.weight(1f)
+                                      ) {
+                                          Text("JANGO")
+                                      }
+
+                                      OutlinedButton(
+                                          onClick = onYouTube,
+                                          modifier = Modifier.weight(1f)
+                                      ) {
+                                          Text("YOUTUBE")
+                                      }
+                                  }
+                              }
+                          }
+
+                          Spacer(
+                              modifier = Modifier.height(14.dp)
+                          )
+
+                          Card(
+                              modifier = Modifier.fillMaxWidth(),
+                              shape = RoundedCornerShape(20.dp),
+                              colors = CardDefaults.cardColors(
+                                  containerColor = Color(0xFF151515)
+                              )
+                          ) {
+
+                              Column(
+                                  modifier = Modifier.padding(18.dp)
+                              ) {
+
+                                  Text(
+                                      "MUSIC LIBRARY",
+                                      fontWeight = FontWeight.Bold
+                                  )
+
+                                  Spacer(
+                                      modifier = Modifier.height(6.dp)
+                                  )
+
+                                  Text(
+                                      "Load audio files from your Android device into either deck.",
+                                      color = Color.LightGray,
+                                      fontSize = 13.sp
+                                  )
+
+                                  Spacer(
+                                      modifier = Modifier.height(8.dp)
+                                  )
+
+                                  Text(
+                                      "Online sources open using their normal playback.",
+                                      color = Color.Gray,
+                                      fontSize = 12.sp
+                                  )
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun RowScope.DeckCard(
+              title: String,
+              playing: Boolean,
+              onLoad: () -> Unit,
+              onJango: () -> Unit,
+              onYouTube: () -> Unit,
+              onPlay: () -> Unit,
+              onPause: () -> Unit
+          ) {
+
+              Card(
+                  modifier = Modifier.weight(1f),
+                  shape = RoundedCornerShape(20.dp),
+                  colors = CardDefaults.cardColors(
+                      containerColor = Color(0xFF151515)
+                  )
+              ) {
+
+                  Column(
+                      modifier = Modifier.padding(14.dp)
+                  ) {
+
+                      Text(
+                          title,
+                          fontWeight = FontWeight.Bold,
+                          fontSize = 18.sp
+                      )
+
+                      Spacer(
+                          modifier = Modifier.height(8.dp)
+                      )
+
+                      Box(
+                          modifier = Modifier
+                              .fillMaxWidth()
+                              .height(75.dp)
+                              .background(
+                                  Color(0xFF242424),
+                                  RoundedCornerShape(12.dp)
+                              ),
+                          contentAlignment = Alignment.Center
+                      ) {
+
+                          Text(
+                              "WAVEFORM",
+                              color = Color.Gray,
+                              fontSize = 11.sp
+                          )
+                      }
+
+                      Spacer(
+                          modifier = Modifier.height(8.dp)
+                      )
+
+                      Button(
+                          onClick = onLoad,
+                          modifier = Modifier.fillMaxWidth()
+                      ) {
+                 
