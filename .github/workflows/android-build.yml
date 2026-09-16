@@ -13,618 +13,89 @@ jobs:
 
       - name: Unzip SHADOW DJ Android project
         run: |
+          rm -rf android-project
           mkdir android-project
           unzip -q SHADOW_DJ_GitHub_Phone_Upload.zip -d android-project
-          echo "Android project files:"
-          find android-project -maxdepth 5 -type f | head -200
+
+          echo "===== PROJECT FILES ====="
+          find android-project -maxdepth 6 -type f | sort | head -250
 
       - name: Find Android project
         id: project
         run: |
-          PROJECT_ROOT=$(dirname "$(find android-project -name settings.gradle.kts -o -name settings.gradle | head -n 1)")
+          SETTINGS=$(find android-project -name settings.gradle.kts -o -name settings.gradle | head -n 1)
+
+          if [ -z "$SETTINGS" ]; then
+            echo "ERROR: settings.gradle file not found"
+            exit 1
+          fi
+
+          PROJECT_ROOT=$(dirname "$SETTINGS")
+
           echo "PROJECT_ROOT=$PROJECT_ROOT"
           echo "root=$PROJECT_ROOT" >> "$GITHUB_OUTPUT"
+
       - name: Check Android project
         working-directory: ${{ steps.project.outputs.root }}
         run: |
           echo "===== MANIFEST ====="
           cat app/src/main/AndroidManifest.xml
 
-          echo "===== BUILD CONFIG ====="
+          echo "===== BUILD CONFIG BEFORE CHANGE ====="
           cat app/build.gradle.kts
-      - name: Add Jango and YouTube buttons
+
+      - name: Use fresh test application ID
         working-directory: ${{ steps.project.outputs.root }}
         run: |
-          MAIN=$(find app/src/main/java -name MainActivity.kt | head -n 1)
-
-          cat > "$MAIN" <<'KOTLIN'
-          package com.shadowdj.app
-
-          import android.content.ComponentName
-          import android.content.Intent
-          import android.content.ServiceConnection
-          import android.net.Uri
-          import android.os.Bundle
-          import android.os.IBinder
-          import androidx.activity.ComponentActivity
-          import androidx.activity.compose.setContent
-          import androidx.activity.result.contract.ActivityResultContracts
-          import androidx.compose.foundation.background
-          import androidx.compose.foundation.layout.*
-          import androidx.compose.foundation.shape.RoundedCornerShape
-          import androidx.compose.material3.*
-          import androidx.compose.runtime.*
-          import androidx.compose.ui.Alignment
-          import androidx.compose.ui.Modifier
-          import androidx.compose.ui.graphics.Color
-          import androidx.compose.ui.text.font.FontWeight
-          import androidx.compose.ui.unit.dp
-          import androidx.compose.ui.unit.sp
-
-          class MainActivity : ComponentActivity() {
-
-              private var djService: PlaybackService? = null
-              private var bound = false
-              private var pendingDeck = "A"
-
-              private val picker =
-                  registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-                      uri ?: return@registerForActivityResult
-
-                      contentResolver.takePersistableUriPermission(
-                          uri,
-                          Intent.FLAG_GRANT_READ_URI_PERMISSION
-                      )
-
-                      if (pendingDeck == "A") {
-                          djService?.loadA(uri.toString())
-                      } else {
-                          djService?.loadB(uri.toString())
-                      }
-                  }
-
-              private val connection = object : ServiceConnection {
-
-                  override fun onServiceConnected(
-                      name: ComponentName?,
-                      service: IBinder?
-                  ) {
-                      djService =
-                          (service as? PlaybackService.LocalBinder)?.service()
-                      bound = true
-                  }
-
-                  override fun onServiceDisconnected(name: ComponentName?) {
-                      bound = false
-                      djService = null
-                  }
-              }
-
-              private fun openJango() {
-                  startActivity(
-                      Intent(
-                          Intent.ACTION_VIEW,
-                          Uri.parse("https://www.jango.com/")
-                      )
-                  )
-              }
-
-              private fun openYouTube() {
-                  startActivity(
-                      Intent(
-                          Intent.ACTION_VIEW,
-                          Uri.parse("https://m.youtube.com/")
-                      )
-                  )
-              }
-
-              override fun onCreate(savedInstanceState: Bundle?) {
-                  super.onCreate(savedInstanceState)
-
-                  val serviceIntent =
-                      Intent(this, PlaybackService::class.java).apply {
-                          action = PlaybackService.ACTION_BIND_DJ
-                      }
-
-                  startService(serviceIntent)
-
-                  bindService(
-                      serviceIntent,
-                      connection,
-                      BIND_AUTO_CREATE
-                  )
-
-                  setContent {
-                      ShadowDJScreen(
-                          onLoadA = {
-                              pendingDeck = "A"
-                              picker.launch(arrayOf("audio/*"))
-                          },
-                          onLoadB = {
-                              pendingDeck = "B"
-                              picker.launch(arrayOf("audio/*"))
-                          },
-                          onJango = { openJango() },
-                          onYouTube = { openYouTube() },
-                          onPlayA = {
-                              djService?.deckA?.play()
-                          },
-                          onPauseA = {
-                              djService?.deckA?.pause()
-                          },
-                          onPlayB = {
-                              djService?.deckB?.play()
-                          },
-                          onPauseB = {
-                              djService?.deckB?.pause()
-                          },
-                          onCrossfader = {
-                              djService?.setCrossfader(it)
-                          }
-                      )
-                  }
-              }
-
-              override fun onDestroy() {
-                  if (bound) {
-                      unbindService(connection)
-                  }
-                  super.onDestroy()
-              }
-          }
-
-          @Composable
-          fun ShadowDJScreen(
-              onLoadA: () -> Unit,
-              onLoadB: () -> Unit,
-              onJango: () -> Unit,
-              onYouTube: () -> Unit,
-              onPlayA: () -> Unit,
-              onPauseA: () -> Unit,
-              onPlayB: () -> Unit,
-              onPauseB: () -> Unit,
-              onCrossfader: (Float) -> Unit
-          ) {
-              var crossfader by remember {
-                  mutableFloatStateOf(0.5f)
-              }
-
-              var playingA by remember {
-                  mutableStateOf(false)
-              }
-
-              var playingB by remember {
-                  mutableStateOf(false)
-              }
-
-              MaterialTheme(
-                  colorScheme = darkColorScheme()
-              ) {
-                  Surface(
-                      modifier = Modifier.fillMaxSize(),
-                      color = Color(0xFF080808)
-                  ) {
-                      Column(
-                          modifier = Modifier
-                              .fillMaxSize()
-                              .padding(16.dp)
-                      ) {
-
-                          Row(
-                              modifier = Modifier.fillMaxWidth(),
-                              horizontalArrangement =
-                                  Arrangement.SpaceBetween,
-                              verticalAlignment =
-                                  Alignment.CenterVertically
-                          ) {
-                              Column {
-                                  Text(
-                                      "SHADOW DJ",
-                                      fontSize = 28.sp,
-                                      fontWeight = FontWeight.Black
-                                  )
-
-                                  Text(
-                                      "MRDARKLORD",
-                                      color = Color.LightGray,
-                                      fontSize = 13.sp
-                                  )
-                              }
-
-                              Text(
-                                  "PHASE 3",
-                                  color = Color.Gray
-                              )
-                          }
-
-                          Spacer(
-                              modifier = Modifier.height(14.dp)
-                          )
-
-                          Row(
-                              modifier = Modifier.fillMaxWidth(),
-                              horizontalArrangement =
-                                  Arrangement.spacedBy(12.dp)
-                          ) {
-                              DeckCard(
-                                  title = "DECK A",
-                                  playing = playingA,
-                                  onLoad = onLoadA,
-                                  onJango = onJango,
-                                  onYouTube = onYouTube,
-                                  onPlay = {
-                                      playingA = true
-                                      onPlayA()
-                                  },
-                                  onPause = {
-                                      playingA = false
-                                      onPauseA()
-                                  }
-                              )
-
-                              DeckCard(
-                                  title = "DECK B",
-                                  playing = playingB,
-                                  onLoad = onLoadB,
-                                  onJango = onJango,
-                                  onYouTube = onYouTube,
-                                  onPlay = {
-                                      playingB = true
-                                      onPlayB()
-                                  },
-                                  onPause = {
-                                      playingB = false
-                                      onPauseB()
-                                  }
-                              )
-                          }
-
-                          Spacer(
-                              modifier = Modifier.height(18.dp)
-                          )
-
-                          Card(
-                              modifier = Modifier.fillMaxWidth(),
-                              shape = RoundedCornerShape(20.dp),
-                              colors = CardDefaults.cardColors(
-                                  containerColor = Color(0xFF151515)
-                              )
-                          ) {
-                              Column(
-                                  modifier = Modifier.padding(18.dp)
-                              ) {
-                                  Text(
-                                      "MIXER",
-                                      fontWeight = FontWeight.Bold,
-                                      fontSize = 18.sp
-                                  )
-
-                                  Spacer(
-                                      modifier = Modifier.height(10.dp)
-                                  )
-
-                                  Text("CROSSFADER")
-
-                                  Slider(
-                                      value = crossfader,
-                                      onValueChange = {
-                                          crossfader = it
-                                          onCrossfader(it)
-                                      }
-                                  )
-
-                                  Row(
-                                      modifier = Modifier.fillMaxWidth(),
-                                      horizontalArrangement =
-                                          Arrangement.SpaceBetween
-                                  ) {
-                                      Text("A", color = Color.Gray)
-                                      Text("CENTER", color = Color.Gray)
-                                      Text("B", color = Color.Gray)
-                                  }
-
-                                  Spacer(
-                                      modifier = Modifier.height(8.dp)
-                                  )
-
-                                  Row(
-                                      modifier = Modifier.fillMaxWidth(),
-                                      horizontalArrangement =
-                                          Arrangement.spacedBy(8.dp)
-                                  ) {
-                                      OutlinedButton(onClick = {}) {
-                                          Text("CUE")
-                                      }
-
-                                      OutlinedButton(onClick = {}) {
-                                          Text("FX")
-                                      }
-
-                                      OutlinedButton(onClick = {}) {
-                                          Text("SYNC")
-                                      }
-
-                                      OutlinedButton(onClick = {}) {
-                                          Text("REC")
-                                      }
-                                  }
-                              }
-                          }
-
-                          Spacer(
-                              modifier = Modifier.height(14.dp)
-                          )
-
-                          Card(
-                              modifier = Modifier.fillMaxWidth(),
-                              shape = RoundedCornerShape(20.dp),
-                              colors = CardDefaults.cardColors(
-                                  containerColor = Color(0xFF151515)
-                              )
-                          ) {
-                              Column(
-                                  modifier = Modifier.padding(18.dp)
-                              ) {
-                                  Text(
-                                      "MUSIC SOURCES",
-                                      fontWeight = FontWeight.Bold,
-                                      fontSize = 18.sp
-                                  )
-
-                                  Spacer(
-                                      modifier = Modifier.height(8.dp)
-                                  )
-
-                                  Text(
-                                      "Choose an online music source.",
-                                      color = Color.LightGray,
-                                      fontSize = 13.sp
-                                  )
-
-                                  Spacer(
-                                      modifier = Modifier.height(10.dp)
-                                  )
-
-                                  Row(
-                                      modifier = Modifier.fillMaxWidth(),
-                                      horizontalArrangement =
-                                          Arrangement.spacedBy(8.dp)
-                                  ) {
-                                      OutlinedButton(
-                                          onClick = onJango,
-                                          modifier = Modifier.weight(1f)
-                                      ) {
-                                          Text("JANGO")
-                                      }
-
-                                      OutlinedButton(
-                                          onClick = onYouTube,
-                                          modifier = Modifier.weight(1f)
-                                      ) {
-                                          Text("YOUTUBE")
-                                      }
-                                  }
-                              }
-                          }
-
-                          Spacer(
-                              modifier = Modifier.height(14.dp)
-                          )
-
-                          Card(
-                              modifier = Modifier.fillMaxWidth(),
-                              shape = RoundedCornerShape(20.dp),
-                              colors = CardDefaults.cardColors(
-                                  containerColor = Color(0xFF151515)
-                              )
-                          ) {
-                              Column(
-                                  modifier = Modifier.padding(18.dp)
-                              ) {
-                                  Text(
-                                      "MUSIC LIBRARY",
-                                      fontWeight = FontWeight.Bold
-                                  )
-
-                                  Spacer(
-                                      modifier = Modifier.height(6.dp)
-                                  )
-
-                                  Text(
-                                      "Load audio files from your Android device into either deck.",
-                                      color = Color.LightGray,
-                                      fontSize = 13.sp
-                                  )
-
-                                  Spacer(
-                                      modifier = Modifier.height(8.dp)
-                                  )
-
-                                  Text(
-                                      "Online sources open using their normal playback.",
-                                      color = Color.Gray,
-                                      fontSize = 12.sp
-                                  )
-                              }
-                          }
-                      }
-                  }
-              }
-          }
-
-          @Composable
-          fun RowScope.DeckCard(
-              title: String,
-              playing: Boolean,
-              onLoad: () -> Unit,
-              onJango: () -> Unit,
-              onYouTube: () -> Unit,
-              onPlay: () -> Unit,
-              onPause: () -> Unit
-          ) {
-              Card(
-                  modifier = Modifier.weight(1f),
-                  shape = RoundedCornerShape(20.dp),
-                  colors = CardDefaults.cardColors(
-                      containerColor = Color(0xFF151515)
-                  )
-              ) {
-                  Column(
-                      modifier = Modifier.padding(14.dp)
-                  ) {
-                      Text(
-                          title,
-                          fontWeight = FontWeight.Bold,
-                          fontSize = 18.sp
-                      )
-
-                      Spacer(
-                          modifier = Modifier.height(8.dp)
-                      )
-
-                      Box(
-                          modifier = Modifier
-                              .fillMaxWidth()
-                              .height(75.dp)
-                              .background(
-                                  Color(0xFF242424),
-                                  RoundedCornerShape(12.dp)
-                              ),
-                          contentAlignment = Alignment.Center
-                      ) {
-                          Text(
-                              "WAVEFORM",
-                              color = Color.Gray,
-                              fontSize = 11.sp
-                          )
-                      }
-
-                      Spacer(
-                          modifier = Modifier.height(8.dp)
-                      )
-
-                      Button(
-                          onClick = onLoad,
-                          modifier = Modifier.fillMaxWidth()
-                      ) {
-                          Text("LOCAL MUSIC")
-                      }
-
-                      Spacer(
-                          modifier = Modifier.height(6.dp)
-                      )
-
-                      Row(
-                          modifier = Modifier.fillMaxWidth(),
-                          horizontalArrangement =
-                              Arrangement.spacedBy(4.dp)
-                      ) {
-                          OutlinedButton(
-                              onClick = onJango,
-                              modifier = Modifier.weight(1f)
-                          ) {
-                              Text(
-                                  "JANGO",
-                                  fontSize = 10.sp
-                              )
-                          }
-
-                          OutlinedButton(
-                              onClick = onYouTube,
-                              modifier = Modifier.weight(1f)
-                          ) {
-                              Text(
-                                  "YOUTUBE",
-                                  fontSize = 10.sp
-                              )
-                          }
-                      }
-
-                      Spacer(
-                          modifier = Modifier.height(6.dp)
-                      )
-
-                      Row(
-                          modifier = Modifier.fillMaxWidth(),
-                          horizontalArrangement =
-                              Arrangement.spacedBy(6.dp)
-                      ) {
-                          Button(
-                              onClick =
-                                  if (playing) {
-                                      onPause
-                                  } else {
-                                      onPlay
-                                  },
-                              modifier = Modifier.weight(1f)
-                          ) {
-                              Text(
-                                  if (playing) {
-                                      "PAUSE"
-                                  } else {
-                                      "PLAY"
-                                  },
-                                  fontSize = 11.sp
-                              )
-                          }
-
-                          OutlinedButton(
-                              onClick = {},
-                              modifier = Modifier.weight(1f)
-                          ) {
-                              Text(
-                                  "CUE",
-                                  fontSize = 11.sp
-                              )
-                          }
-                      }
-                  }
-              }
-          }
-          KOTLIN
-
-      - name: Set up Java
-        uses: actions/setup-java@v4
+          sed -i 's/applicationId = "com.shadowdj.app"/applicationId = "com.shadowdj.shadowdj"/' app/build.gradle.kts
+
+          echo "===== BUILD CONFIG AFTER CHANGE ====="
+          cat app/build.gradle.kts
+
+          echo "===== APPLICATION ID CHECK ====="
+          grep "applicationId" app/build.gradle.kts
+
+      - name: Enable AndroidX
+        run: |
+          mkdir -p "${{ steps.project.outputs.root }}/gradle"
+          cat > "${{ steps.project.outputs.root }}/gradle.properties" <<'EOF'
+          android.useAndroidX=true
+          android.enableJetifier=true
+          kotlin.jvm.target.validation.mode=warning
+          EOF
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Enable AndroidX
-        working-directory: ${{ steps.project.outputs.root }}
-        run: |
-          echo "android.useAndroidX=true" >> gradle.properties
-          echo "android.enableJetifier=true" >> gradle.properties
-
-      - name: Fix JVM target compatibility
-        working-directory: ${{ steps.project.outputs.root }}
-        run: |
-          echo "kotlin.jvm.target.validation.mode=warning" >> gradle.properties
-
       - name: Build SHADOW DJ APK
         working-directory: ${{ steps.project.outputs.root }}
         run: |
-          gradle assembleDebug
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon
 
       - name: Find APK
         id: apk
         working-directory: ${{ steps.project.outputs.root }}
         run: |
-          APK=$(find . -path "*/build/outputs/apk/debug/*.apk" -type f | head -n 1)
+          APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
 
           if [ -z "$APK" ]; then
-            echo "ERROR: APK was not found."
+            echo "ERROR: APK was not created"
             exit 1
           fi
 
           echo "APK=$APK"
           echo "apk=$APK" >> "$GITHUB_OUTPUT"
 
-      - name: Check APK
+      - name: Verify APK
         working-directory: ${{ steps.project.outputs.root }}
         run: |
           APK="${{ steps.apk.outputs.apk }}"
@@ -632,11 +103,8 @@ jobs:
           echo "===== APK FILE ====="
           ls -lh "$APK"
 
-          echo "===== APK SHA256 ====="
-          sha256sum "$APK"
-
-          echo "===== APK BADGING ====="
-          $ANDROID_HOME/build-tools/35.0.0/aapt dump badging "$APK"
+          echo "===== APK PACKAGE ====="
+          $ANDROID_HOME/build-tools/35.0.0/aapt dump badging "$APK" | head -20
 
           echo "===== APK SIGNATURE ====="
           $ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose "$APK"
@@ -646,27 +114,17 @@ jobs:
         run: |
           APK="${{ steps.apk.outputs.apk }}"
 
+          rm -rf /tmp/shadow-dj
           mkdir -p /tmp/shadow-dj
 
           cp "$APK" /tmp/shadow-dj/SHADOW-DJ.apk
 
           cd /tmp/shadow-dj
-
           zip -q SHADOW-DJ-APK.zip SHADOW-DJ.apk
 
           echo "===== DOWNLOAD FILE ====="
           ls -lh SHADOW-DJ-APK.zip
-          
-      - name: APK Install Check
-        working-directory: ${{ steps.project.outputs.root }}
-        run: |
-          APK="${{ steps.apk.outputs.apk }}"
-          echo "===== APK INSTALL CHECK ====="
-          ls -lh "$APK"
-          $ANDROID_HOME/build-tools/35.0.0/aapt dump badging "$APK" | head -20
-          echo "===== SIGNATURE CHECK ====="
-          $ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose "$APK"
-    
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
