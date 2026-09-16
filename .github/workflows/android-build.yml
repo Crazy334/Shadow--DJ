@@ -1,42 +1,84 @@
-name: Inspect SHADOW DJ Android Project
+name: Build SHADOW DJ Android APK
 
 on:
   workflow_dispatch:
 
 jobs:
-  inspect:
+  build:
     runs-on: ubuntu-latest
 
     steps:
       - name: Download repository
         uses: actions/checkout@v4
 
-      - name: Extract Android project
+      - name: Unzip SHADOW DJ Android project
         run: |
           mkdir android-project
           unzip -q SHADOW_DJ_GitHub_Phone_Upload.zip -d android-project
+          echo "Files found:"
+          find android-project -maxdepth 5 -type f | head -200
 
-      - name: Show Android files
+      - name: Find Android project
+        id: project
         run: |
-          echo "===== PROJECT FILES ====="
-          find android-project -type f | sort
+          PROJECT_ROOT=$(dirname "$(find android-project -name settings.gradle.kts -o -name settings.gradle | head -n 1)")
+          echo "PROJECT_ROOT=$PROJECT_ROOT"
+          echo "root=$PROJECT_ROOT" >> "$GITHUB_OUTPUT"
 
-      - name: Show MainActivity.kt
-        run: |
-          echo "===== MainActivity.kt ====="
-          cat "$(find android-project -name MainActivity.kt | head -n 1)"
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
 
-      - name: Show AndroidManifest.xml
-        run: |
-          echo "===== AndroidManifest.xml ====="
-          cat "$(find android-project -name AndroidManifest.xml | head -n 1)"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
 
-      - name: Show PlaybackService.kt
+      - name: Enable AndroidX
+        working-directory: ${{ steps.project.outputs.root }}
         run: |
-          echo "===== PlaybackService.kt ====="
-          cat "$(find android-project -name PlaybackService.kt | head -n 1)"
+          echo "android.useAndroidX=true" >> gradle.properties
+          echo "android.enableJetifier=true" >> gradle.properties
 
-      - name: Show app build.gradle.kts
+      - name: Fix JVM target compatibility
+        working-directory: ${{ steps.project.outputs.root }}
         run: |
-          echo "===== app/build.gradle.kts ====="
-          cat "$(find android-project -path "*/app/build.gradle.kts" | head -n 1)"
+          echo "kotlin.jvm.target.validation.mode=warning" >> gradle.properties
+
+      - name: Build SHADOW DJ APK
+        working-directory: ${{ steps.project.outputs.root }}
+        run: gradle assembleDebug
+
+      - name: Find APK
+        id: apk
+        working-directory: ${{ steps.project.outputs.root }}
+        run: |
+          APK=$(find . -path "*/build/outputs/apk/debug/*.apk" -type f | head -n 1)
+          echo "APK=$APK"
+          echo "apk=$APK" >> "$GITHUB_OUTPUT"
+
+      - name: Check APK
+        working-directory: ${{ steps.project.outputs.root }}
+        run: |
+          APK="${{ steps.apk.outputs.apk }}"
+
+          echo "===== APK FILE ====="
+          ls -lh "$APK"
+
+          echo "===== APK SHA256 ====="
+          sha256sum "$APK"
+
+          echo "===== APK BADGING ====="
+          $ANDROID_HOME/build-tools/35.0.0/aapt dump badging "$APK"
+
+          echo "===== APK SIGNATURE ====="
+          $ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose "$APK"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SHADOW-DJ-APK
+          path: |
+            ${{ steps.project.outputs.root }}/**/build/outputs/apk/debug/*.apk
