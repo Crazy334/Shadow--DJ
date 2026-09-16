@@ -52,12 +52,14 @@ jobs:
           echo "===== APPLICATION ID ====="
           grep "applicationId" app/build.gradle.kts
 
-      - name: Enable AndroidX
+      - name: Enable AndroidX and increase build memory
         run: |
           cat > "${{ steps.project.outputs.root }}/gradle.properties" <<'EOF'
           android.useAndroidX=true
           android.enableJetifier=true
           kotlin.jvm.target.validation.mode=warning
+          org.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8
+          org.gradle.workers.max=2
           EOF
 
       - name: Setup Java 17
