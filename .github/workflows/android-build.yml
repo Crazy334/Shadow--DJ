@@ -517,4 +517,142 @@ jobs:
                               modifier = Modifier.weight(1f)
                           ) {
                               Text(
-          
+                                  "JANGO",
+                                  fontSize = 10.sp
+                              )
+                          }
+
+                          OutlinedButton(
+                              onClick = onYouTube,
+                              modifier = Modifier.weight(1f)
+                          ) {
+                              Text(
+                                  "YOUTUBE",
+                                  fontSize = 10.sp
+                              )
+                          }
+                      }
+
+                      Spacer(
+                          modifier = Modifier.height(6.dp)
+                      )
+
+                      Row(
+                          modifier = Modifier.fillMaxWidth(),
+                          horizontalArrangement =
+                              Arrangement.spacedBy(6.dp)
+                      ) {
+                          Button(
+                              onClick =
+                                  if (playing) {
+                                      onPause
+                                  } else {
+                                      onPlay
+                                  },
+                              modifier = Modifier.weight(1f)
+                          ) {
+                              Text(
+                                  if (playing) {
+                                      "PAUSE"
+                                  } else {
+                                      "PLAY"
+                                  },
+                                  fontSize = 11.sp
+                              )
+                          }
+
+                          OutlinedButton(
+                              onClick = {},
+                              modifier = Modifier.weight(1f)
+                          ) {
+                              Text(
+                                  "CUE",
+                                  fontSize = 11.sp
+                              )
+                          }
+                      }
+                  }
+              }
+          }
+          KOTLIN
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Enable AndroidX
+        working-directory: ${{ steps.project.outputs.root }}
+        run: |
+          echo "android.useAndroidX=true" >> gradle.properties
+          echo "android.enableJetifier=true" >> gradle.properties
+
+      - name: Fix JVM target compatibility
+        working-directory: ${{ steps.project.outputs.root }}
+        run: |
+          echo "kotlin.jvm.target.validation.mode=warning" >> gradle.properties
+
+      - name: Build SHADOW DJ APK
+        working-directory: ${{ steps.project.outputs.root }}
+        run: |
+          gradle assembleDebug
+
+      - name: Find APK
+        id: apk
+        working-directory: ${{ steps.project.outputs.root }}
+        run: |
+          APK=$(find . -path "*/build/outputs/apk/debug/*.apk" -type f | head -n 1)
+
+          if [ -z "$APK" ]; then
+            echo "ERROR: APK was not found."
+            exit 1
+          fi
+
+          echo "APK=$APK"
+          echo "apk=$APK" >> "$GITHUB_OUTPUT"
+
+      - name: Check APK
+        working-directory: ${{ steps.project.outputs.root }}
+        run: |
+          APK="${{ steps.apk.outputs.apk }}"
+
+          echo "===== APK FILE ====="
+          ls -lh "$APK"
+
+          echo "===== APK SHA256 ====="
+          sha256sum "$APK"
+
+          echo "===== APK BADGING ====="
+          $ANDROID_HOME/build-tools/35.0.0/aapt dump badging "$APK"
+
+          echo "===== APK SIGNATURE ====="
+          $ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose "$APK"
+
+      - name: Package APK
+        working-directory: ${{ steps.project.outputs.root }}
+        run: |
+          APK="${{ steps.apk.outputs.apk }}"
+
+          mkdir -p /tmp/shadow-dj
+
+          cp "$APK" /tmp/shadow-dj/SHADOW-DJ.apk
+
+          cd /tmp/shadow-dj
+
+          zip -q SHADOW-DJ-APK.zip SHADOW-DJ.apk
+
+          echo "===== DOWNLOAD FILE ====="
+          ls -lh SHADOW-DJ-APK.zip
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SHADOW-DJ-APK
+          path: /tmp/shadow-dj/SHADOW-DJ-APK.zip
+          if-no-files-found: error
