@@ -41,7 +41,7 @@ jobs:
           echo "===== MANIFEST ====="
           cat app/src/main/AndroidManifest.xml
 
-          echo "===== BUILD CONFIG BEFORE CHANGE ====="
+          echo "===== BUILD CONFIG ====="
           cat app/build.gradle.kts
 
       - name: Use fresh test application ID
@@ -49,15 +49,11 @@ jobs:
         run: |
           sed -i 's/applicationId = "com.shadowdj.app"/applicationId = "com.shadowdj.shadowdj"/' app/build.gradle.kts
 
-          echo "===== BUILD CONFIG AFTER CHANGE ====="
-          cat app/build.gradle.kts
-
-          echo "===== APPLICATION ID CHECK ====="
+          echo "===== APPLICATION ID ====="
           grep "applicationId" app/build.gradle.kts
 
       - name: Enable AndroidX
         run: |
-          mkdir -p "${{ steps.project.outputs.root }}/gradle"
           cat > "${{ steps.project.outputs.root }}/gradle.properties" <<'EOF'
           android.useAndroidX=true
           android.enableJetifier=true
@@ -78,8 +74,7 @@ jobs:
       - name: Build SHADOW DJ APK
         working-directory: ${{ steps.project.outputs.root }}
         run: |
-          chmod +x gradlew
-          ./gradlew clean assembleDebug --no-daemon
+          gradle clean assembleDebug --no-daemon
 
       - name: Find APK
         id: apk
