@@ -15,6 +15,8 @@ jobs:
         run: |
           mkdir android-project
           unzip -q SHADOW_DJ_GitHub_Phone_Upload.zip -d android-project
+          echo "Android project files:"
+          find android-project -maxdepth 5 -type f | head -200
 
       - name: Find Android project
         id: project
@@ -118,6 +120,7 @@ jobs:
                       }
 
                   startService(serviceIntent)
+
                   bindService(
                       serviceIntent,
                       connection,
@@ -159,7 +162,6 @@ jobs:
                   if (bound) {
                       unbindService(connection)
                   }
-
                   super.onDestroy()
               }
           }
@@ -176,7 +178,6 @@ jobs:
               onPauseB: () -> Unit,
               onCrossfader: (Float) -> Unit
           ) {
-
               var crossfader by remember {
                   mutableFloatStateOf(0.5f)
               }
@@ -192,12 +193,10 @@ jobs:
               MaterialTheme(
                   colorScheme = darkColorScheme()
               ) {
-
                   Surface(
                       modifier = Modifier.fillMaxSize(),
                       color = Color(0xFF080808)
                   ) {
-
                       Column(
                           modifier = Modifier
                               .fillMaxSize()
@@ -211,9 +210,7 @@ jobs:
                               verticalAlignment =
                                   Alignment.CenterVertically
                           ) {
-
                               Column {
-
                                   Text(
                                       "SHADOW DJ",
                                       fontSize = 28.sp,
@@ -242,298 +239,8 @@ jobs:
                               horizontalArrangement =
                                   Arrangement.spacedBy(12.dp)
                           ) {
-
                               DeckCard(
                                   title = "DECK A",
                                   playing = playingA,
                                   onLoad = onLoadA,
-                                  onJango = onJango,
-                                  onYouTube = onYouTube,
-                                  onPlay = {
-                                      playingA = true
-                                      onPlayA()
-                                  },
-                                  onPause = {
-                                      playingA = false
-                                      onPauseA()
-                                  }
-                              )
-
-                              DeckCard(
-                                  title = "DECK B",
-                                  playing = playingB,
-                                  onLoad = onLoadB,
-                                  onJango = onJango,
-                                  onYouTube = onYouTube,
-                                  onPlay = {
-                                      playingB = true
-                                      onPlayB()
-                                  },
-                                  onPause = {
-                                      playingB = false
-                                      onPauseB()
-                                  }
-                              )
-                          }
-
-                          Spacer(
-                              modifier = Modifier.height(18.dp)
-                          )
-
-                          Card(
-                              modifier = Modifier.fillMaxWidth(),
-                              shape = RoundedCornerShape(20.dp),
-                              colors = CardDefaults.cardColors(
-                                  containerColor = Color(0xFF151515)
-                              )
-                          ) {
-
-                              Column(
-                                  modifier = Modifier.padding(18.dp)
-                              ) {
-
-                                  Text(
-                                      "MIXER",
-                                      fontWeight = FontWeight.Bold,
-                                      fontSize = 18.sp
-                                  )
-
-                                  Spacer(
-                                      modifier = Modifier.height(10.dp)
-                                  )
-
-                                  Text("CROSSFADER")
-
-                                  Slider(
-                                      value = crossfader,
-                                      onValueChange = {
-                                          crossfader = it
-                                          onCrossfader(it)
-                                      }
-                                  )
-
-                                  Row(
-                                      modifier = Modifier.fillMaxWidth(),
-                                      horizontalArrangement =
-                                          Arrangement.SpaceBetween
-                                  ) {
-
-                                      Text(
-                                          "A",
-                                          color = Color.Gray
-                                      )
-
-                                      Text(
-                                          "CENTER",
-                                          color = Color.Gray
-                                      )
-
-                                      Text(
-                                          "B",
-                                          color = Color.Gray
-                                      )
-                                  }
-
-                                  Spacer(
-                                      modifier = Modifier.height(8.dp)
-                                  )
-
-                                  Row(
-                                      modifier = Modifier.fillMaxWidth(),
-                                      horizontalArrangement =
-                                          Arrangement.spacedBy(8.dp)
-                                  ) {
-
-                                      OutlinedButton(
-                                          onClick = {}
-                                      ) {
-                                          Text("CUE")
-                                      }
-
-                                      OutlinedButton(
-                                          onClick = {}
-                                      ) {
-                                          Text("FX")
-                                      }
-
-                                      OutlinedButton(
-                                          onClick = {}
-                                      ) {
-                                          Text("SYNC")
-                                      }
-
-                                      OutlinedButton(
-                                          onClick = {}
-                                      ) {
-                                          Text("REC")
-                                      }
-                                  }
-                              }
-                          }
-
-                          Spacer(
-                              modifier = Modifier.height(14.dp)
-                          )
-
-                          Card(
-                              modifier = Modifier.fillMaxWidth(),
-                              shape = RoundedCornerShape(20.dp),
-                              colors = CardDefaults.cardColors(
-                                  containerColor = Color(0xFF151515)
-                              )
-                          ) {
-
-                              Column(
-                                  modifier = Modifier.padding(18.dp)
-                              ) {
-
-                                  Text(
-                                      "MUSIC SOURCES",
-                                      fontWeight = FontWeight.Bold,
-                                      fontSize = 18.sp
-                                  )
-
-                                  Spacer(
-                                      modifier = Modifier.height(8.dp)
-                                  )
-
-                                  Text(
-                                      "Choose an online music source.",
-                                      color = Color.LightGray,
-                                      fontSize = 13.sp
-                                  )
-
-                                  Spacer(
-                                      modifier = Modifier.height(10.dp)
-                                  )
-
-                                  Row(
-                                      modifier = Modifier.fillMaxWidth(),
-                                      horizontalArrangement =
-                                          Arrangement.spacedBy(8.dp)
-                                  ) {
-
-                                      OutlinedButton(
-                                          onClick = onJango,
-                                          modifier = Modifier.weight(1f)
-                                      ) {
-                                          Text("JANGO")
-                                      }
-
-                                      OutlinedButton(
-                                          onClick = onYouTube,
-                                          modifier = Modifier.weight(1f)
-                                      ) {
-                                          Text("YOUTUBE")
-                                      }
-                                  }
-                              }
-                          }
-
-                          Spacer(
-                              modifier = Modifier.height(14.dp)
-                          )
-
-                          Card(
-                              modifier = Modifier.fillMaxWidth(),
-                              shape = RoundedCornerShape(20.dp),
-                              colors = CardDefaults.cardColors(
-                                  containerColor = Color(0xFF151515)
-                              )
-                          ) {
-
-                              Column(
-                                  modifier = Modifier.padding(18.dp)
-                              ) {
-
-                                  Text(
-                                      "MUSIC LIBRARY",
-                                      fontWeight = FontWeight.Bold
-                                  )
-
-                                  Spacer(
-                                      modifier = Modifier.height(6.dp)
-                                  )
-
-                                  Text(
-                                      "Load audio files from your Android device into either deck.",
-                                      color = Color.LightGray,
-                                      fontSize = 13.sp
-                                  )
-
-                                  Spacer(
-                                      modifier = Modifier.height(8.dp)
-                                  )
-
-                                  Text(
-                                      "Online sources open using their normal playback.",
-                                      color = Color.Gray,
-                                      fontSize = 12.sp
-                                  )
-                              }
-                          }
-                      }
-                  }
-              }
-          }
-
-          @Composable
-          fun RowScope.DeckCard(
-              title: String,
-              playing: Boolean,
-              onLoad: () -> Unit,
-              onJango: () -> Unit,
-              onYouTube: () -> Unit,
-              onPlay: () -> Unit,
-              onPause: () -> Unit
-          ) {
-
-              Card(
-                  modifier = Modifier.weight(1f),
-                  shape = RoundedCornerShape(20.dp),
-                  colors = CardDefaults.cardColors(
-                      containerColor = Color(0xFF151515)
-                  )
-              ) {
-
-                  Column(
-                      modifier = Modifier.padding(14.dp)
-                  ) {
-
-                      Text(
-                          title,
-                          fontWeight = FontWeight.Bold,
-                          fontSize = 18.sp
-                      )
-
-                      Spacer(
-                          modifier = Modifier.height(8.dp)
-                      )
-
-                      Box(
-                          modifier = Modifier
-                              .fillMaxWidth()
-                              .height(75.dp)
-                              .background(
-                                  Color(0xFF242424),
-                                  RoundedCornerShape(12.dp)
-                              ),
-                          contentAlignment = Alignment.Center
-                      ) {
-
-                          Text(
-                              "WAVEFORM",
-                              color = Color.Gray,
-                              fontSize = 11.sp
-                          )
-                      }
-
-                      Spacer(
-                          modifier = Modifier.height(8.dp)
-                      )
-
-                      Button(
-                          onClick = onLoad,
-                          modifier = Modifier.fillMaxWidth()
-                      ) {
-                 
+                                  onJango = onJango
