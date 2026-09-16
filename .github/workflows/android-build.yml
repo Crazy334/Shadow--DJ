@@ -649,7 +649,17 @@ jobs:
 
           echo "===== DOWNLOAD FILE ====="
           ls -lh SHADOW-DJ-APK.zip
-
+          
+      - name: APK Install Check
+        working-directory: ${{ steps.project.outputs.root }}
+        run: |
+          APK="${{ steps.apk.outputs.apk }}"
+          echo "===== APK INSTALL CHECK ====="
+          ls -lh "$APK"
+          $ANDROID_HOME/build-tools/35.0.0/aapt dump badging "$APK" | head -20
+          echo "===== SIGNATURE CHECK ====="
+          $ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose "$APK"
+    
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
