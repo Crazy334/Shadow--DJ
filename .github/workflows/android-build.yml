@@ -1,4 +1,4 @@
-name: Build SHADOW DJ Android APK
+name: Build Simple Android Test APK
 
 on:
   workflow_dispatch:
@@ -8,58 +8,115 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download repository
-        uses: actions/checkout@v4
-
-      - name: Unzip SHADOW DJ Android project
+      - name: Create simple Android project
         run: |
-          rm -rf android-project
-          mkdir android-project
-          unzip -q SHADOW_DJ_GitHub_Phone_Upload.zip -d android-project
+          rm -rf simple-test
+          mkdir -p simple-test/app/src/main/java/com/test/simple
+          mkdir -p simple-test/app/src/main/res/values
 
-          echo "===== PROJECT FILES ====="
-          find android-project -maxdepth 6 -type f | sort | head -250
+          cat > simple-test/settings.gradle.kts <<'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
 
-      - name: Find Android project
-        id: project
-        run: |
-          SETTINGS=$(find android-project -name settings.gradle.kts -o -name settings.gradle | head -n 1)
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
 
-          if [ -z "$SETTINGS" ]; then
-            echo "ERROR: settings.gradle file not found"
-            exit 1
-          fi
+          rootProject.name = "SimpleTest"
+          include(":app")
+          EOF
 
-          PROJECT_ROOT=$(dirname "$SETTINGS")
+          cat > simple-test/build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application") version "8.7.3" apply false
+          }
+          EOF
 
-          echo "PROJECT_ROOT=$PROJECT_ROOT"
-          echo "root=$PROJECT_ROOT" >> "$GITHUB_OUTPUT"
+          cat > simple-test/app/build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application")
+          }
 
-      - name: Check Android project
-        working-directory: ${{ steps.project.outputs.root }}
-        run: |
-          echo "===== MANIFEST ====="
-          cat app/src/main/AndroidManifest.xml
+          android {
+              namespace = "com.test.simple"
+              compileSdk = 35
 
-          echo "===== BUILD CONFIG ====="
-          cat app/build.gradle.kts
+              defaultConfig {
+                  applicationId = "com.test.simple"
+                  minSdk = 23
+                  targetSdk = 35
+                  versionCode = 1
+                  versionName = "1.0"
+              }
+          }
+          EOF
 
-      - name: Use fresh test application ID
-        working-directory: ${{ steps.project.outputs.root }}
-        run: |
-          sed -i 's/applicationId = "com.shadowdj.app"/applicationId = "com.shadowdj.shadowdj"/' app/build.gradle.kts
+          cat > simple-test/gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
+          EOF
 
-          echo "===== APPLICATION ID ====="
-          grep "applicationId" app/build.gradle.kts
+          cat > simple-test/app/src/main/AndroidManifest.xml <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-      - name: Enable AndroidX and increase build memory
-        run: |
-          cat > "${{ steps.project.outputs.root }}/gradle.properties" <<'EOF'
-          android.useAndroidX=true
-          android.enableJetifier=true
-          kotlin.jvm.target.validation.mode=warning
-          org.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8
-          org.gradle.workers.max=2
+              <application
+                  android:theme="@style/AppTheme"
+                  android:label="Simple Test">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+
+                  </activity>
+
+              </application>
+
+          </manifest>
+          EOF
+
+          cat > simple-test/app/src/main/res/values/styles.xml <<'EOF'
+          <resources>
+              <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+                  <item name="android:fontFamily">sans</item>
+                  <item name="android:colorAccent">#000000</item>
+              </style>
+          </resources>
+          EOF
+
+          cat > simple-test/app/src/main/java/com/test/simple/MainActivity.java <<'EOF'
+          package com.test.simple;
+
+          import android.app.Activity;
+          import android.os.Bundle;
+          import android.widget.TextView;
+
+          public class MainActivity extends Activity {
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+
+                  TextView text = new TextView(this);
+                  text.setText("SHADOW DJ INSTALL TEST");
+                  text.setTextSize(24);
+                  text.setPadding(40, 40, 40, 40);
+
+                  setContentView(text);
+              }
+          }
           EOF
 
       - name: Setup Java 17
@@ -73,58 +130,38 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Build SHADOW DJ APK
-        working-directory: ${{ steps.project.outputs.root }}
+      - name: Build test APK
+        working-directory: simple-test
         run: |
           gradle clean assembleDebug --no-daemon
 
-      - name: Find APK
-        id: apk
-        working-directory: ${{ steps.project.outputs.root }}
-        run: |
-          APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
-
-          if [ -z "$APK" ]; then
-            echo "ERROR: APK was not created"
-            exit 1
-          fi
-
-          echo "APK=$APK"
-          echo "apk=$APK" >> "$GITHUB_OUTPUT"
-
       - name: Verify APK
-        working-directory: ${{ steps.project.outputs.root }}
+        working-directory: simple-test
         run: |
-          APK="${{ steps.apk.outputs.apk }}"
+          APK="app/build/outputs/apk/debug/app-debug.apk"
 
-          echo "===== APK FILE ====="
+          echo "===== APK ====="
           ls -lh "$APK"
 
-          echo "===== APK PACKAGE ====="
-          $ANDROID_HOME/build-tools/35.0.0/aapt dump badging "$APK" | head -20
+          echo "===== PACKAGE ====="
+          $ANDROID_HOME/build-tools/35.0.0/aapt dump badging "$APK" | head -15
 
-          echo "===== APK SIGNATURE ====="
+          echo "===== SIGNATURE ====="
           $ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose "$APK"
 
       - name: Package APK
-        working-directory: ${{ steps.project.outputs.root }}
         run: |
-          APK="${{ steps.apk.outputs.apk }}"
+          mkdir -p /tmp/simple-test
+          cp simple-test/app/build/outputs/apk/debug/app-debug.apk /tmp/simple-test/Simple-Test.apk
 
-          rm -rf /tmp/shadow-dj
-          mkdir -p /tmp/shadow-dj
+          cd /tmp/simple-test
+          zip -q Simple-Test-APK.zip Simple-Test.apk
 
-          cp "$APK" /tmp/shadow-dj/SHADOW-DJ.apk
+          ls -lh Simple-Test-APK.zip
 
-          cd /tmp/shadow-dj
-          zip -q SHADOW-DJ-APK.zip SHADOW-DJ.apk
-
-          echo "===== DOWNLOAD FILE ====="
-          ls -lh SHADOW-DJ-APK.zip
-
-      - name: Upload APK
+      - name: Upload test APK
         uses: actions/upload-artifact@v4
         with:
-          name: SHADOW-DJ-APK
-          path: /tmp/shadow-dj/SHADOW-DJ-APK.zip
+          name: Simple-Test-APK
+          path: /tmp/simple-test/Simple-Test-APK.zip
           if-no-files-found: error
