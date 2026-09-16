@@ -15,8 +15,6 @@ jobs:
         run: |
           mkdir android-project
           unzip -q SHADOW_DJ_GitHub_Phone_Upload.zip -d android-project
-          echo "Files found:"
-          find android-project -maxdepth 5 -type f | head -200
 
       - name: Find Android project
         id: project
@@ -25,60 +23,161 @@ jobs:
           echo "PROJECT_ROOT=$PROJECT_ROOT"
           echo "root=$PROJECT_ROOT" >> "$GITHUB_OUTPUT"
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
-
-      - name: Enable AndroidX
+      - name: Add Jango and YouTube buttons
         working-directory: ${{ steps.project.outputs.root }}
         run: |
-          echo "android.useAndroidX=true" >> gradle.properties
-          echo "android.enableJetifier=true" >> gradle.properties
+          MAIN=$(find app/src/main/java -name MainActivity.kt | head -n 1)
 
-      - name: Fix JVM target compatibility
-        working-directory: ${{ steps.project.outputs.root }}
-        run: |
-          echo "kotlin.jvm.target.validation.mode=warning" >> gradle.properties
+          cat > "$MAIN" <<'KOTLIN'
+package com.shadowdj.app
 
-      - name: Build SHADOW DJ APK
-        working-directory: ${{ steps.project.outputs.root }}
-        run: gradle assembleDebug
+import android.content.ComponentName
+import android.content.Intent
+import android.content.ServiceConnection
+import android.net.Uri
+import android.os.Bundle
+import android.os.IBinder
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
-      - name: Find APK
-        id: apk
-        working-directory: ${{ steps.project.outputs.root }}
-        run: |
-          APK=$(find . -path "*/build/outputs/apk/debug/*.apk" -type f | head -n 1)
-          echo "APK=$APK"
-          echo "apk=$APK" >> "$GITHUB_OUTPUT"
+class MainActivity : ComponentActivity() {
+    private var djService: PlaybackService? = null
+    private var bound = false
 
-      - name: Check APK
-        working-directory: ${{ steps.project.outputs.root }}
-        run: |
-          APK="${{ steps.apk.outputs.apk }}"
+    private var pendingDeck = "A"
 
-          echo "===== APK FILE ====="
-          ls -lh "$APK"
+    private val picker =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+            uri ?: return@registerForActivityResult
+            contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
 
-          echo "===== APK SHA256 ====="
-          sha256sum "$APK"
+            if (pendingDeck == "A") {
+                djService?.loadA(uri.toString())
+            } else {
+                djService?.loadB(uri.toString())
+            }
+        }
 
-          echo "===== APK BADGING ====="
-          $ANDROID_HOME/build-tools/35.0.0/aapt dump badging "$APK"
+    private val connection = object : ServiceConnection {
+        override fun onServiceConnected(
+            name: ComponentName?,
+            service: IBinder?
+        ) {
+            djService =
+                (service as? PlaybackService.LocalBinder)?.service()
+            bound = true
+        }
 
-          echo "===== APK SIGNATURE ====="
-          $ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose "$APK"
+        override fun onServiceDisconnected(name: ComponentName?) {
+            bound = false
+            djService = null
+        }
+    }
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: SHADOW-DJ-APK
-          path: |
-            ${{ steps.project.outputs.root }}/**/build/outputs/apk/debug/*.apk
+    private fun openJango() {
+        startActivity(
+            Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("https://www.jango.com/")
+            )
+        )
+    }
+
+    private fun openYouTube() {
+        startActivity(
+            Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("https://m.youtube.com/")
+            )
+        )
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        val intent = Intent(this, PlaybackService::class.java).apply {
+            action = PlaybackService.ACTION_BIND_DJ
+        }
+
+        startService(intent)
+        bindService(intent, connection, BIND_AUTO_CREATE)
+
+        setContent {
+            ShadowDJScreen(
+                onLoadA = {
+                    pendingDeck = "A"
+                    picker.launch(arrayOf("audio/*"))
+                },
+                onLoadB = {
+                    pendingDeck = "B"
+                    picker.launch(arrayOf("audio/*"))
+                },
+                onJango = { openJango() },
+                onYouTube = { openYouTube() },
+                onPlayA = { djService?.deckA?.play() },
+                onPauseA = { djService?.deckA?.pause() },
+                onPlayB = { djService?.deckB?.play() },
+                onPauseB = { djService?.deckB?.pause() },
+                onCrossfader = { djService?.setCrossfader(it) }
+            )
+        }
+    }
+
+    override fun onDestroy() {
+        if (bound) {
+            unbindService(connection)
+        }
+        super.onDestroy()
+    }
+}
+
+@Composable
+fun ShadowDJScreen(
+    onLoadA: () -> Unit,
+    onLoadB: () -> Unit,
+    onJango: () -> Unit,
+    onYouTube: () -> Unit,
+    onPlayA: () -> Unit,
+    onPauseA: () -> Unit,
+    onPlayB: () -> Unit,
+    onPauseB: () -> Unit,
+    onCrossfader: (Float) -> Unit
+) {
+    var crossfader by remember { mutableFloatStateOf(0.5f) }
+    var playingA by remember { mutableStateOf(false) }
+    var playingB by remember { mutableStateOf(false) }
+
+    MaterialTheme(colorScheme = darkColorScheme()) {
+        Surface(
+            Modifier.fillMaxSize(),
+            color = Color(0xFF080808)
+        ) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+            ) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            "SHADOW DJ",
+                            fontSize =
