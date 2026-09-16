@@ -24,7 +24,14 @@ jobs:
           PROJECT_ROOT=$(dirname "$(find android-project -name settings.gradle.kts -o -name settings.gradle | head -n 1)")
           echo "PROJECT_ROOT=$PROJECT_ROOT"
           echo "root=$PROJECT_ROOT" >> "$GITHUB_OUTPUT"
+      - name: Check Android project
+        working-directory: ${{ steps.project.outputs.root }}
+        run: |
+          echo "===== MANIFEST ====="
+          cat app/src/main/AndroidManifest.xml
 
+          echo "===== BUILD CONFIG ====="
+          cat app/build.gradle.kts
       - name: Add Jango and YouTube buttons
         working-directory: ${{ steps.project.outputs.root }}
         run: |
