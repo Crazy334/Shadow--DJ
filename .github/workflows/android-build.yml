@@ -11,7 +11,7 @@ jobs:
       - name: Download repository
         uses: actions/checkout@v4
 
-      - name: Unzip SHADOW DJ project
+      - name: Unzip SHADOW DJ Android project
         run: |
           rm -rf android-project
           mkdir android-project
@@ -37,15 +37,65 @@ jobs:
           sed -i 's/applicationId = "com.shadowdj.app"/applicationId = "com.shadowdj.shadowdj"/' app/build.gradle.kts
           grep "applicationId" app/build.gradle.kts
 
-      - name: Replace MainActivity with SHADOW DJ controls
+      - name: Add internet permission and security settings
+        working-directory: ${{ steps.project.outputs.root }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("app/src/main/AndroidManifest.xml")
+          s = p.read_text()
+
+          if '<uses-permission android:name="android.permission.INTERNET"/>' not in s:
+              s = s.replace(
+                  '<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
+                  '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n'
+                  '    <uses-permission android:name="android.permission.INTERNET"/>'
+              )
+
+          s = s.replace(
+              '<application android:allowBackup="true"',
+              '<application android:allowBackup="false"'
+          )
+
+          if 'android:usesCleartextTraffic=' not in s:
+              s = s.replace(
+                  'android:supportsRtl="true">',
+                  'android:supportsRtl="true"\n'
+                  '        android:usesCleartextTraffic="false"\n'
+                  '        android:networkSecurityConfig="@xml/network_security_config">'
+              )
+
+          p.write_text(s)
+          PY
+
+          mkdir -p app/src/main/res/xml
+
+          cat > app/src/main/res/xml/network_security_config.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <network-security-config>
+              <base-config cleartextTrafficPermitted="false">
+                  <trust-anchors>
+                      <certificates src="system"/>
+                  </trust-anchors>
+              </base-config>
+          </network-security-config>
+          EOF
+
+      - name: Replace MainActivity with SHADOW DJ secure in-app sources
         working-directory: ${{ steps.project.outputs.root }}
         run: |
           cat > app/src/main/java/com/shadowdj/app/MainActivity.kt <<'EOF'
           package com.shadowdj.app
 
+          import android.annotation.SuppressLint
           import android.content.Intent
           import android.net.Uri
           import android.os.Bundle
+          import android.webkit.WebResourceRequest
+          import android.webkit.WebSettings
+          import android.webkit.WebView
+          import android.webkit.WebViewClient
           import androidx.activity.ComponentActivity
           import androidx.activity.compose.setContent
           import androidx.compose.foundation.layout.Arrangement
@@ -61,19 +111,17 @@ jobs:
           import androidx.compose.material3.Slider
           import androidx.compose.material3.Surface
           import androidx.compose.material3.Text
+          import androidx.compose.runtime.Composable
           import androidx.compose.runtime.getValue
           import androidx.compose.runtime.mutableFloatStateOf
+          import androidx.compose.runtime.mutableStateOf
           import androidx.compose.runtime.remember
           import androidx.compose.runtime.setValue
           import androidx.compose.ui.Modifier
           import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.viewinterop.AndroidView
 
           class MainActivity : ComponentActivity() {
-
-              private fun openWebsite(url: String) {
-                  val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                  startActivity(intent)
-              }
 
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
@@ -83,125 +131,222 @@ jobs:
                           Surface(
                               modifier = Modifier.fillMaxSize()
                           ) {
-                              ShadowDJScreen(
-                                  onJango = {
-                                      openWebsite("https://www.jango.com/")
-                                  },
-                                  onYouTube = {
-                                      openWebsite("https://www.youtube.com/")
-                                  }
-                              )
+                              ShadowDJScreen()
                           }
                       }
                   }
               }
           }
 
-          @androidx.compose.runtime.Composable
-          fun ShadowDJScreen(
-              onJango: () -> Unit,
-              onYouTube: () -> Unit
-          ) {
+          @Composable
+          fun ShadowDJScreen() {
+
+              var currentSource by remember { mutableStateOf<String?>(null) }
               var crossfader by remember { mutableFloatStateOf(0.5f) }
               var master by remember { mutableFloatStateOf(1.0f) }
               var deckA by remember { mutableFloatStateOf(1.0f) }
               var deckB by remember { mutableFloatStateOf(1.0f) }
 
+              if (currentSource != null) {
+
+                  InAppMusicSource(
+                      url = currentSource!!,
+                      onClose = {
+                          currentSource = null
+                      }
+                  )
+
+              } else {
+
+                  Column(
+                      modifier = Modifier
+                          .fillMaxSize()
+                          .padding(20.dp),
+                      verticalArrangement = Arrangement.Top
+                  ) {
+
+                      Text(
+                          text = "SHADOW DJ",
+                          style = MaterialTheme.typography.headlineLarge
+                      )
+
+                      Spacer(modifier = Modifier.height(20.dp))
+
+                      Text(
+                          text = "MUSIC SOURCES",
+                          style = MaterialTheme.typography.titleLarge
+                      )
+
+                      Spacer(modifier = Modifier.height(10.dp))
+
+                      Row(
+                          modifier = Modifier.fillMaxWidth(),
+                          horizontalArrangement = Arrangement.spacedBy(10.dp)
+                      ) {
+
+                          Button(
+                              onClick = {
+                                  currentSource = "https://www.jango.com/"
+                              },
+                              modifier = Modifier.weight(1f)
+                          ) {
+                              Text("JANGO")
+                          }
+
+                          Button(
+                              onClick = {
+                                  currentSource = "https://www.youtube.com/"
+                              },
+                              modifier = Modifier.weight(1f)
+                          ) {
+                              Text("YOUTUBE")
+                          }
+                      }
+
+                      Spacer(modifier = Modifier.height(25.dp))
+
+                      Text(
+                          text = "DECK A",
+                          style = MaterialTheme.typography.titleLarge
+                      )
+
+                      Spacer(modifier = Modifier.height(8.dp))
+
+                      Button(
+                          onClick = { },
+                          modifier = Modifier.fillMaxWidth()
+                      ) {
+                          Text("LOCAL MUSIC")
+                      }
+
+                      Slider(
+                          value = deckA,
+                          onValueChange = {
+                              deckA = it
+                          }
+                      )
+
+                      Spacer(modifier = Modifier.height(15.dp))
+
+                      Text(
+                          text = "DECK B",
+                          style = MaterialTheme.typography.titleLarge
+                      )
+
+                      Spacer(modifier = Modifier.height(8.dp))
+
+                      Button(
+                          onClick = { },
+                          modifier = Modifier.fillMaxWidth()
+                      ) {
+                          Text("LOCAL MUSIC")
+                      }
+
+                      Slider(
+                          value = deckB,
+                          onValueChange = {
+                              deckB = it
+                          }
+                      )
+
+                      Spacer(modifier = Modifier.height(20.dp))
+
+                      Text("CROSSFADER")
+
+                      Slider(
+                          value = crossfader,
+                          onValueChange = {
+                              crossfader = it
+                          }
+                      )
+
+                      Text("MASTER")
+
+                      Slider(
+                          value = master,
+                          onValueChange = {
+                              master = it
+                          }
+                      )
+                  }
+              }
+          }
+
+          @SuppressLint("SetJavaScriptEnabled")
+          @Composable
+          fun InAppMusicSource(
+              url: String,
+              onClose: () -> Unit
+          ) {
+
               Column(
-                  modifier = Modifier
-                      .fillMaxSize()
-                      .padding(20.dp),
-                  verticalArrangement = Arrangement.Top
+                  modifier = Modifier.fillMaxSize()
               ) {
-                  Text(
-                      text = "SHADOW DJ",
-                      style = MaterialTheme.typography.headlineLarge
-                  )
-
-                  Spacer(modifier = Modifier.height(20.dp))
-
-                  Text(
-                      text = "MUSIC SOURCES",
-                      style = MaterialTheme.typography.titleLarge
-                  )
-
-                  Spacer(modifier = Modifier.height(10.dp))
 
                   Row(
-                      modifier = Modifier.fillMaxWidth(),
-                      horizontalArrangement = Arrangement.spacedBy(10.dp)
+                      modifier = Modifier
+                          .fillMaxWidth()
+                          .padding(8.dp),
+                      horizontalArrangement = Arrangement.Start
                   ) {
-                      Button(
-                          onClick = onJango,
-                          modifier = Modifier.weight(1f)
-                      ) {
-                          Text("JANGO")
-                      }
 
                       Button(
-                          onClick = onYouTube,
-                          modifier = Modifier.weight(1f)
+                          onClick = onClose
                       ) {
-                          Text("YOUTUBE")
+                          Text("← BACK TO SHADOW DJ")
                       }
                   }
 
-                  Spacer(modifier = Modifier.height(25.dp))
+                  AndroidView(
+                      modifier = Modifier.fillMaxSize(),
 
-                  Text(
-                      text = "DECK A",
-                      style = MaterialTheme.typography.titleLarge
-                  )
+                      factory = { context ->
 
-                  Spacer(modifier = Modifier.height(8.dp))
+                          WebView(context).apply {
 
-                  Button(
-                      onClick = { },
-                      modifier = Modifier.fillMaxWidth()
-                  ) {
-                      Text("LOCAL MUSIC")
-                  }
+                              settings.javaScriptEnabled = true
+                              settings.domStorageEnabled = true
 
-                  Slider(
-                      value = deckA,
-                      onValueChange = { deckA = it }
-                  )
+                              settings.allowFileAccess = false
+                              settings.allowContentAccess = false
 
-                  Spacer(modifier = Modifier.height(15.dp))
+                              settings.javaScriptCanOpenWindowsAutomatically = false
+                              settings.setSupportMultipleWindows(false)
 
-                  Text(
-                      text = "DECK B",
-                      style = MaterialTheme.typography.titleLarge
-                  )
+                              settings.mixedContentMode =
+                                  WebSettings.MIXED_CONTENT_NEVER_ALLOW
 
-                  Spacer(modifier = Modifier.height(8.dp))
+                              settings.safeBrowsingEnabled = true
 
-                  Button(
-                      onClick = { },
-                      modifier = Modifier.fillMaxWidth()
-                  ) {
-                      Text("LOCAL MUSIC")
-                  }
+                              webViewClient = object : WebViewClient() {
 
-                  Slider(
-                      value = deckB,
-                      onValueChange = { deckB = it }
-                  )
+                                  override fun shouldOverrideUrlLoading(
+                                      view: WebView?,
+                                      request: WebResourceRequest?
+                                  ): Boolean {
 
-                  Spacer(modifier = Modifier.height(20.dp))
+                                      val target = request?.url ?: return true
 
-                  Text("CROSSFADER")
+                                      val host = target.host?.lowercase() ?: return true
 
-                  Slider(
-                      value = crossfader,
-                      onValueChange = { crossfader = it }
-                  )
+                                      val allowed =
+                                          host == "youtube.com" ||
+                                          host.endsWith(".youtube.com") ||
+                                          host == "youtu.be" ||
+                                          host == "jango.com" ||
+                                          host.endsWith(".jango.com")
 
-                  Text("MASTER")
+                                      if (allowed) {
+                                          return false
+                                      }
 
-                  Slider(
-                      value = master,
-                      onValueChange = { master = it }
+                                      return true
+                                  }
+                              }
+
+                              loadUrl(url)
+                          }
+                      }
                   )
               }
           }
