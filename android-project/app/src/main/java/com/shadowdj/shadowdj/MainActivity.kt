@@ -15,6 +15,7 @@ import android.view.ViewGroup
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.SeekBar
@@ -28,38 +29,41 @@ class MainActivity : AppCompatActivity() {
     private var bound = false
 
     private lateinit var statusText: TextView
-    private lateinit var genreSpinner: Spinner
-    private lateinit var masterSeek: SeekBar
-    private lateinit var crossfaderSeek: SeekBar
 
-    private val connection = object : ServiceConnection {
+    private val connection =
+        object : ServiceConnection {
 
-        override fun onServiceConnected(
-            name: ComponentName?,
-            service: IBinder?
-        ) {
-            val binder =
-                service as? PlaybackService.LocalBinder
+            override fun onServiceConnected(
+                name: ComponentName?,
+                service: IBinder?
+            ) {
+                val binder =
+                    service as? PlaybackService.LocalBinder
 
-            playbackService = binder?.service()
-            bound = playbackService != null
+                playbackService =
+                    binder?.service()
 
-            statusText.text =
-                if (bound) {
-                    "SHADOW DJ • READY"
-                } else {
-                    "SHADOW DJ • OFFLINE"
-                }
+                bound =
+                    playbackService != null
+
+                statusText.text =
+                    if (bound) {
+                        "SHADOW DJ • READY"
+                    } else {
+                        "SHADOW DJ • OFFLINE"
+                    }
+            }
+
+            override fun onServiceDisconnected(
+                name: ComponentName?
+            ) {
+                playbackService = null
+                bound = false
+
+                statusText.text =
+                    "SHADOW DJ • DISCONNECTED"
+            }
         }
-
-        override fun onServiceDisconnected(
-            name: ComponentName?
-        ) {
-            playbackService = null
-            bound = false
-            statusText.text = "SHADOW DJ • DISCONNECTED"
-        }
-    }
 
     override fun onCreate(
         savedInstanceState: Bundle?
@@ -68,29 +72,46 @@ class MainActivity : AppCompatActivity() {
 
         title = "SHADOW DJ"
 
-        startPlaybackService()
         buildInterface()
+
+        /*
+         * Start the playback service after the interface
+         * has been created so a service problem cannot
+         * prevent the main screen from being displayed.
+         */
+        startPlaybackService()
     }
 
     private fun startPlaybackService() {
 
-        val intent =
-            Intent(
-                this,
-                PlaybackService::class.java
+        try {
+
+            val intent =
+                Intent(
+                    this,
+                    PlaybackService::class.java
+                )
+
+            if (Build.VERSION.SDK_INT >= 26) {
+
+                startForegroundService(intent)
+
+            } else {
+
+                startService(intent)
+            }
+
+            bindService(
+                intent,
+                connection,
+                Context.BIND_AUTO_CREATE
             )
 
-        if (Build.VERSION.SDK_INT >= 26) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
-        }
+        } catch (e: Exception) {
 
-        bindService(
-            intent,
-            connection,
-            Context.BIND_AUTO_CREATE
-        )
+            statusText.text =
+                "SHADOW DJ • SERVICE ERROR"
+        }
     }
 
     private fun buildInterface() {
@@ -165,7 +186,7 @@ class MainActivity : AppCompatActivity() {
             matchParams()
         )
 
-        genreSpinner =
+        val genreSpinner =
             Spinner(this)
 
         val genres =
@@ -189,20 +210,19 @@ class MainActivity : AppCompatActivity() {
             )
 
         val adapter =
-            android.widget.ArrayAdapter(
+            ArrayAdapter(
                 this,
                 android.R.layout.simple_spinner_dropdown_item,
                 genres
             )
 
-        genreSpinner.adapter = adapter
+        genreSpinner.adapter =
+            adapter
 
         root.addView(
             genreSpinner,
             matchParams()
         )
-
-        genreSpinner.setSelection(0)
 
         val autoDJ =
             Button(this)
@@ -315,7 +335,9 @@ class MainActivity : AppCompatActivity() {
                 !shuffleEnabled
 
             playbackService
-                ?.setShuffle(shuffleEnabled)
+                ?.setShuffle(
+                    shuffleEnabled
+                )
 
             shuffle.text =
                 if (shuffleEnabled) {
@@ -344,7 +366,9 @@ class MainActivity : AppCompatActivity() {
                 !repeatEnabled
 
             playbackService
-                ?.setRepeat(repeatEnabled)
+                ?.setRepeat(
+                    repeatEnabled
+                )
 
             repeat.text =
                 if (repeatEnabled) {
@@ -374,7 +398,7 @@ class MainActivity : AppCompatActivity() {
             matchParams()
         )
 
-        masterSeek =
+        val masterSeek =
             SeekBar(this)
 
         masterSeek.max = 100
@@ -427,7 +451,7 @@ class MainActivity : AppCompatActivity() {
             matchParams()
         )
 
-        crossfaderSeek =
+        val crossfaderSeek =
             SeekBar(this)
 
         crossfaderSeek.max = 100
@@ -472,6 +496,7 @@ class MainActivity : AppCompatActivity() {
             "YOUTUBE"
 
         youtube.setOnClickListener {
+
             openWebPlayer(
                 "https://www.youtube.com"
             )
@@ -489,6 +514,7 @@ class MainActivity : AppCompatActivity() {
             "JANGO"
 
         jango.setOnClickListener {
+
             openWebPlayer(
                 "https://www.jango.com"
             )
@@ -524,6 +550,7 @@ class MainActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply {
+
             setMargins(
                 0,
                 8,
@@ -540,16 +567,20 @@ class MainActivity : AppCompatActivity() {
         val webView =
             WebView(this)
 
-        webView.settings.javaScriptEnabled = true
+        webView.settings.javaScriptEnabled =
+            true
 
-        webView.settings.domStorageEnabled = true
+        webView.settings.domStorageEnabled =
+            true
 
         webView.settings.mediaPlaybackRequiresUserGesture =
             false
 
-        webView.settings.allowFileAccess = false
+        webView.settings.allowFileAccess =
+            false
 
-        webView.settings.allowContentAccess = false
+        webView.settings.allowContentAccess =
+            false
 
         webView.settings.mixedContentMode =
             WebSettings.MIXED_CONTENT_NEVER_ALLOW
@@ -573,11 +604,14 @@ class MainActivity : AppCompatActivity() {
                     )
                     .build()
 
-            enterPictureInPictureMode(params)
+            enterPictureInPictureMode(
+                params
+            )
         }
     }
 
     override fun onUserLeaveHint() {
+
         super.onUserLeaveHint()
 
         if (Build.VERSION.SDK_INT >= 26) {
@@ -589,7 +623,9 @@ class MainActivity : AppCompatActivity() {
                     )
                     .build()
 
-            enterPictureInPictureMode(params)
+            enterPictureInPictureMode(
+                params
+            )
         }
     }
 
@@ -597,6 +633,7 @@ class MainActivity : AppCompatActivity() {
         isInPictureInPictureMode: Boolean,
         newConfig: Configuration
     ) {
+
         super.onPictureInPictureModeChanged(
             isInPictureInPictureMode,
             newConfig
@@ -606,7 +643,11 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
 
         if (bound) {
-            unbindService(connection)
+
+            unbindService(
+                connection
+            )
+
             bound = false
         }
 
