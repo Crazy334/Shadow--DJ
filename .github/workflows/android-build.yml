@@ -3,8 +3,7 @@ name: Build SHADOW DJ
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
   build:
@@ -14,312 +13,33 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Install Gradle
+      - name: Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Prepare Audius key
+      - name: Audius Key
         env:
-          AUDIUS_API_KEY: ${{ secrets.AUDIUS_API_KEY }}
+          KEY: ${{ secrets.AUDIUS_API_KEY }}
         run: |
-          KEY="$(printf '%s' "$AUDIUS_API_KEY" | tr -d '\r\n')"
-          KEY_B64="$(printf '%s' "$KEY" | base64 -w 0)"
-          echo "AUDIUS_API_KEY_B64=$KEY_B64" >> "$GITHUB_ENV"
+          B64=$(printf '%s' "$KEY" | base64 -w 0)
+          echo "AUDIUS_API_KEY_B64=$B64" >> "$GITHUB_ENV"
 
-      - name: Create Android project
+      - name: Build
+        working-directory: android-project
+        env:
+          AUDIUS_API_KEY_B64: ${{ env.AUDIUS_API_KEY_B64 }}
         run: |
-          rm -rf android-project
+          gradle clean assembleDebug
 
-          mkdir -p android-project/app/src/main/java/com/shadowdj/shadowdj
-          mkdir -p android-project/app/src/main/res/values
-          mkdir -p android-project/app/src/main/res/xml
-
-          cd android-project
-
-          cat > settings.gradle.kts <<'EOF'
-          pluginManagement {
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
-
-          dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-
-          rootProject.name = "SHADOW-DJ"
-          include(":app")
-          EOF
-
-          cat > build.gradle.kts <<'EOF'
-          plugins {
-              id("com.android.application") version "8.7.3" apply false
-              id("org.jetbrains.kotlin.android") version "2.0.21" apply false
-          }
-          EOF
-
-          cat > gradle.properties <<'EOF'
-          android.useAndroidX=true
-          android.nonTransitiveRClass=true
-          kotlin.jvm.target.validation.mode=warning
-          EOF
-
-          cat > app/build.gradle.kts <<'EOF'
-          plugins {
-              id("com.android.application")
-              id("org.jetbrains.kotlin.android")
-          }
-
-          val audiusApiKeyBase64 =
-              System.getenv("AUDIUS_API_KEY_B64") ?: ""
-
-          android {
-              namespace = "com.shadowdj.shadowdj"
-              compileSdk = 35
-
-              defaultConfig {
-                  applicationId = "com.shadowdj.shadowdj"
-                  minSdk = 26
-                  targetSdk = 35
-                  versionCode = 32
-                  versionName = "3.2.0"
-
-                  buildConfigField(
-                      "String",
-                      "AUDIUS_API_KEY_B64",
-                      "\"$audiusApiKeyBase64\""
-                  )
-              }
-
-              buildFeatures {
-                  buildConfig = true
-              }
-
-              compileOptions {
-                  sourceCompatibility = JavaVersion.VERSION_17
-                  targetCompatibility = JavaVersion.VERSION_17
-              }
-
-              kotlinOptions {
-                  jvmTarget = "17"
-              }
-          }
-
-          dependencies {
-              implementation("androidx.core:core-ktx:1.15.0")
-              implementation("androidx.activity:activity-ktx:1.10.1")
-              implementation("androidx.appcompat:appcompat:1.7.0")
-              implementation("androidx.media3:media3-exoplayer:1.5.1")
-              implementation("androidx.media3:media3-session:1.5.1")
-          }
-          EOF
-
-          cat > app/src/main/res/values/styles.xml <<'EOF'
-          <resources>
-              <style name="Theme.ShadowDJ"
-                  parent="android:style/Theme.Material.NoActionBar">
-
-                  <item name="android:fontFamily">sans</item>
-                  <item name="android:colorAccent">#FFFFFF</item>
-                  <item name="android:navigationBarColor">#000000</item>
-                  <item name="android:statusBarColor">#000000</item>
-                  <item name="android:windowLightStatusBar">false</item>
-
-              </style>
-          </resources>
-          EOF
-
-          cat > app/src/main/res/xml/network_security_config.xml <<'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-
-          <network-security-config>
-              <base-config cleartextTrafficPermitted="false" />
-          </network-security-config>
-          EOF
-
-          cat > app/src/main/AndroidManifest.xml <<'EOF'
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
-              <uses-permission android:name="android.permission.INTERNET"/>
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
-              <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-
-              <application
-                  android:allowBackup="false"
-                  android:label="SHADOW DJ"
-                  android:theme="@style/Theme.ShadowDJ"
-                  android:supportsRtl="true"
-                  android:usesCleartextTraffic="false"
-                  android:networkSecurityConfig="@xml/network_security_config">
-
-                  <activity
-                      android:name=".MainActivity"
-                      android:exported="true"
-                      android:supportsPictureInPicture="true"
-                      android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation">
-
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN"/>
-                          <category android:name="android.intent.category.LAUNCHER"/>
-                      </intent-filter>
-
-                  </activity>
-
-                  <service
-                      android:name=".PlaybackService"
-                      android:foregroundServiceType="mediaPlayback"
-                      android:exported="true"
-                      android:stopWithTask="false">
-
-                      <intent-filter>
-                          <action android:name="androidx.media3.session.MediaSessionService"/>
-                          <action android:name="android.media.browse.MediaBrowserService"/>
-                      </intent-filter>
-
-                  </service>
-
-              </application>
-
-          </manifest>
-          EOF
-
-          cat > app/src/main/java/com/shadowdj/shadowdj/PlaybackService.kt <<'EOF'
-          package com.shadowdj.shadowdj
-
-          import android.content.Intent
-          import android.os.Binder
-          import android.os.Handler
-          import android.os.IBinder
-          import android.util.Base64
-          import androidx.media3.common.AudioAttributes
-          import androidx.media3.common.C
-          import androidx.media3.common.MediaItem
-          import androidx.media3.common.Player
-          import androidx.media3.exoplayer.ExoPlayer
-          import androidx.media3.session.MediaSession
-          import androidx.media3.session.MediaSessionService
-          import org.json.JSONArray
-          import java.net.HttpURLConnection
-          import java.net.URL
-          import java.net.URLEncoder
-          import java.util.concurrent.Executors
-
-          class PlaybackService : MediaSessionService() {
-
-              inner class LocalBinder : Binder() {
-                  fun service(): PlaybackService = this@PlaybackService
-              }
-
-              private val binder = LocalBinder()
-
-              lateinit var player: ExoPlayer
-                  private set
-
-              private var mediaSession: MediaSession? = null
-
-              private var master = 1f
-              private var crossfader = 0.5f
-              private var deckVolumeA = 1f
-              private var deckVolumeB = 1f
-
-              private var autoDJ = false
-              private var loading = false
-              private var currentGenre = "ALL"
-
-              private val executor =
-                  Executors.newSingleThreadExecutor()
-
-              private val queuedIds =
-                  HashSet<String>()
-
-              override fun onCreate() {
-                  super.onCreate()
-
-                  player =
-                      ExoPlayer.Builder(this).build()
-
-                  val audioAttributes =
-                      AudioAttributes.Builder()
-                          .setUsage(C.USAGE_MEDIA)
-                          .setContentType(
-                              C.AUDIO_CONTENT_TYPE_MUSIC
-                          )
-                          .build()
-
-                  player.setAudioAttributes(
-                      audioAttributes,
-                      false
-                  )
-
-                  player.repeatMode =
-                      Player.REPEAT_MODE_OFF
-
-                  player.addListener(
-                      object : Player.Listener {
-
-                          override fun onMediaItemTransition(
-                              mediaItem: MediaItem?,
-                              reason: Int
-                          ) {
-                              if (!autoDJ) return
-
-                              val remaining =
-                                  player.mediaItemCount -
-                                  player.currentMediaItemIndex
-
-                              if (remaining < 8) {
-                                  loadMoreTracks()
-                              }
-                          }
-
-                          override fun onPlaybackStateChanged(
-                              state: Int
-                          ) {
-                              if (
-                                  autoDJ &&
-                                  state ==
-                                  Player.STATE_ENDED
-                              ) {
-                                  loadMoreTracks()
-                              }
-                          }
-                      }
-                  )
-
-                  mediaSession =
-                      MediaSession.Builder(
-                          this,
-                          player
-                      ).build()
-              }
-
-              override fun onBind(
-                  intent: Intent?
-              ): IBinder? {
-                  return if (
-                      intent?.action ==
-                      ACTION_BIND_DJ
-                  ) {
-                      binder
-                  } else {
-                      super.onBind(intent)
-                  }
-              }
-
-              private fun getApiKey(): String {
-                  return try {
-                      val encoded
+      - name: APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SHADOW-DJ-APK
+          path: android-project/app/build/outputs/apk/debug/app-debug.apk
