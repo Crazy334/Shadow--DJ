@@ -2,6 +2,7 @@ package com.shadowdj.shadowdj
 
 import android.content.Intent
 import android.os.Binder
+import android.os.Handler
 import android.os.IBinder
 import android.util.Base64
 import androidx.media3.common.AudioAttributes
@@ -12,6 +13,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import org.json.JSONArray
+import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -40,6 +42,7 @@ class PlaybackService : MediaSessionService() {
     private var currentGenre = "ALL"
 
     private val executor = Executors.newSingleThreadExecutor()
+    private val mainHandler = Handler(mainLooper)
 
     private val queuedIds = HashSet<String>()
 
@@ -48,10 +51,11 @@ class PlaybackService : MediaSessionService() {
 
         player = ExoPlayer.Builder(this).build()
 
-        val audioAttributes = AudioAttributes.Builder()
-            .setUsage(C.USAGE_MEDIA)
-            .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-            .build()
+        val audioAttributes =
+            AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                .build()
 
         player.setAudioAttributes(
             audioAttributes,
@@ -67,7 +71,9 @@ class PlaybackService : MediaSessionService() {
                     mediaItem: MediaItem?,
                     reason: Int
                 ) {
-                    if (!autoDJ) return
+                    if (!autoDJ) {
+                        return
+                    }
 
                     val remaining =
                         player.mediaItemCount -
@@ -101,6 +107,7 @@ class PlaybackService : MediaSessionService() {
     override fun onBind(
         intent: Intent?
     ): IBinder? {
+
         return if (
             intent?.action == ACTION_BIND_DJ
         ) {
@@ -111,9 +118,15 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun getApiKey(): String {
+
         return try {
+
             val encoded =
                 BuildConfig.AUDIUS_API_KEY_B64
+
+            if (encoded.isBlank()) {
+                return ""
+            }
 
             val bytes =
                 Base64.decode(
@@ -125,6 +138,7 @@ class PlaybackService : MediaSessionService() {
                 bytes,
                 Charsets.UTF_8
             )
+
         } catch (_: Exception) {
             ""
         }
@@ -133,33 +147,46 @@ class PlaybackService : MediaSessionService() {
     fun startAutoDJ(
         genre: String = "ALL"
     ) {
+
         currentGenre = genre
         autoDJ = true
         loading = false
 
+        player.stop()
         player.clearMediaItems()
+
         queuedIds.clear()
 
         loadMoreTracks()
     }
 
     fun stopAutoDJ() {
+
         autoDJ = false
+        loading = false
     }
 
     fun setGenre(
         genre: String
     ) {
+
         currentGenre = genre
 
         if (autoDJ) {
+
+            player.stop()
             player.clearMediaItems()
+
             queuedIds.clear()
+
+            loading = false
+
             loadMoreTracks()
         }
     }
 
     fun playPause() {
+
         if (player.isPlaying) {
             player.pause()
         } else {
@@ -168,13 +195,15 @@ class PlaybackService : MediaSessionService() {
     }
 
     fun next() {
-        if (player.hasNextMediaItem) {
+
+        if (player.hasNextMediaItem()) {
             player.seekToNext()
         }
     }
 
     fun previous() {
-        if (player.hasPreviousMediaItem) {
+
+        if (player.hasPreviousMediaItem()) {
             player.seekToPrevious()
         }
     }
@@ -182,12 +211,14 @@ class PlaybackService : MediaSessionService() {
     fun setShuffle(
         enabled: Boolean
     ) {
+
         player.shuffleModeEnabled = enabled
     }
 
     fun setRepeat(
         enabled: Boolean
     ) {
+
         player.repeatMode =
             if (enabled) {
                 Player.REPEAT_MODE_ALL
@@ -199,14 +230,26 @@ class PlaybackService : MediaSessionService() {
     fun setMaster(
         value: Float
     ) {
-        master = value.coerceIn(0f, 1f)
+
+        master =
+            value.coerceIn(
+                0f,
+                1f
+            )
+
         applyMixer()
     }
 
     fun setCrossfader(
         value: Float
     ) {
-        crossfader = value.coerceIn(0f, 1f)
+
+        crossfader =
+            value.coerceIn(
+                0f,
+                1f
+            )
+
         applyMixer()
     }
 
@@ -214,18 +257,29 @@ class PlaybackService : MediaSessionService() {
         deck: String,
         value: Float
     ) {
+
         if (deck == "A") {
+
             deckVolumeA =
-                value.coerceIn(0f, 1f)
+                value.coerceIn(
+                    0f,
+                    1f
+                )
+
         } else {
+
             deckVolumeB =
-                value.coerceIn(0f, 1f)
+                value.coerceIn(
+                    0f,
+                    1f
+                )
         }
 
         applyMixer()
     }
 
     private fun applyMixer() {
+
         val volumeA =
             (1f - crossfader) *
             deckVolumeA *
@@ -240,12 +294,18 @@ class PlaybackService : MediaSessionService() {
             maxOf(
                 volumeA,
                 volumeB
-            ).coerceIn(0f, 1f)
+            ).coerceIn(
+                0f,
+                1f
+            )
     }
 
     private fun loadMoreTracks() {
 
-        if (loading || !autoDJ) {
+        if (
+            loading ||
+            !autoDJ
+        ) {
             return
         }
 
@@ -259,33 +319,43 @@ class PlaybackService : MediaSessionService() {
                     getApiKey()
 
                 if (apiKey.isBlank()) {
-                    loading = false
+
+                    mainHandler.post {
+                        loading = false
+                    }
+
                     return@execute
                 }
 
-                val genreQuery =
+                val encodedKey =
+                    URLEncoder.encode(
+                        apiKey,
+                        "UTF-8"
+                    )
+
+                val requestUrl =
                     if (
                         currentGenre.isBlank() ||
                         currentGenre == "ALL"
                     ) {
-                        ""
+
+                        "https://api.audius.co/v1/tracks/trending" +
+                        "?limit=50" +
+                        "&api_key=" +
+                        encodedKey
+
                     } else {
+
+                        "https://api.audius.co/v1/tracks/trending" +
+                        "?limit=50" +
+                        "&api_key=" +
+                        encodedKey +
                         "&genre=" +
                         URLEncoder.encode(
                             currentGenre,
                             "UTF-8"
                         )
                     }
-
-                val requestUrl =
-                    "https://api.audius.co/v1/tracks/trending" +
-                    "?limit=50" +
-                    "&api_key=" +
-                    URLEncoder.encode(
-                        apiKey,
-                        "UTF-8"
-                    ) +
-                    genreQuery
 
                 val connection =
                     URL(requestUrl)
@@ -295,6 +365,22 @@ class PlaybackService : MediaSessionService() {
                 connection.requestMethod = "GET"
                 connection.connectTimeout = 15000
                 connection.readTimeout = 20000
+
+                val responseCode =
+                    connection.responseCode
+
+                if (
+                    responseCode !in 200..299
+                ) {
+
+                    connection.disconnect()
+
+                    mainHandler.post {
+                        loading = false
+                    }
+
+                    return@execute
+                }
 
                 val response =
                     connection
@@ -307,9 +393,7 @@ class PlaybackService : MediaSessionService() {
                 connection.disconnect()
 
                 val root =
-                    org.json.JSONObject(
-                        response
-                    )
+                    JSONObject(response)
 
                 val data =
                     root.optJSONArray(
@@ -328,7 +412,9 @@ class PlaybackService : MediaSessionService() {
                             ?: continue
 
                     val id =
-                        track.optString("id")
+                        track.optString(
+                            "id"
+                        )
 
                     val title =
                         track.optString(
@@ -365,10 +451,7 @@ class PlaybackService : MediaSessionService() {
                         "https://api.audius.co/v1/tracks/" +
                         id +
                         "/stream?api_key=" +
-                        URLEncoder.encode(
-                            apiKey,
-                            "UTF-8"
-                        )
+                        encodedKey
 
                     val item =
                         MediaItem.Builder()
@@ -380,6 +463,7 @@ class PlaybackService : MediaSessionService() {
                             .build()
 
                     newItems.add(item)
+
                     queuedIds.add(id)
 
                     if (
@@ -389,11 +473,12 @@ class PlaybackService : MediaSessionService() {
                     }
                 }
 
-                if (newItems.isNotEmpty()) {
+                mainHandler.post {
 
-                    android.os.Handler(
-                        mainLooper
-                    ).post {
+                    if (
+                        newItems.isNotEmpty() &&
+                        autoDJ
+                    ) {
 
                         val wasEmpty =
                             player.mediaItemCount == 0
@@ -403,19 +488,20 @@ class PlaybackService : MediaSessionService() {
                         )
 
                         if (wasEmpty) {
+
                             player.prepare()
                             player.play()
                         }
-
-                        loading = false
                     }
 
-                } else {
                     loading = false
                 }
 
             } catch (_: Exception) {
-                loading = false
+
+                mainHandler.post {
+                    loading = false
+                }
             }
         }
     }
@@ -423,13 +509,18 @@ class PlaybackService : MediaSessionService() {
     override fun onTaskRemoved(
         rootIntent: Intent?
     ) {
-        player.play()
+
+        if (autoDJ) {
+            player.play()
+        }
+
         super.onTaskRemoved(rootIntent)
     }
 
     override fun onGetSession(
         controllerInfo: MediaSession.ControllerInfo
     ): MediaSession? {
+
         return mediaSession
     }
 
@@ -445,6 +536,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     companion object {
+
         const val ACTION_BIND_DJ =
             "com.shadowdj.shadowdj.BIND_DJ"
     }
