@@ -25,14 +25,22 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Create Android project
+      - name: Prepare Audius key
         env:
           AUDIUS_API_KEY: ${{ secrets.AUDIUS_API_KEY }}
         run: |
+          KEY="$(printf '%s' "$AUDIUS_API_KEY" | tr -d '\r\n')"
+          KEY_B64="$(printf '%s' "$KEY" | base64 -w 0)"
+          echo "AUDIUS_API_KEY_B64=$KEY_B64" >> "$GITHUB_ENV"
+
+      - name: Create Android project
+        run: |
           rm -rf android-project
+
           mkdir -p android-project/app/src/main/java/com/shadowdj/shadowdj
           mkdir -p android-project/app/src/main/res/values
           mkdir -p android-project/app/src/main/res/xml
+
           cd android-project
 
           cat > settings.gradle.kts <<'EOF'
@@ -75,7 +83,8 @@ jobs:
               id("org.jetbrains.kotlin.android")
           }
 
-          val audiusApiKey = System.getenv("AUDIUS_API_KEY") ?: ""
+          val audiusApiKeyBase64 =
+              System.getenv("AUDIUS_API_KEY_B64") ?: ""
 
           android {
               namespace = "com.shadowdj.shadowdj"
@@ -85,13 +94,13 @@ jobs:
                   applicationId = "com.shadowdj.shadowdj"
                   minSdk = 26
                   targetSdk = 35
-                  versionCode = 30
-                  versionName = "3.0.0"
+                  versionCode = 32
+                  versionName = "3.2.0"
 
                   buildConfigField(
                       "String",
-                      "AUDIUS_API_KEY",
-                      "\"${audiusApiKey.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+                      "AUDIUS_API_KEY_B64",
+                      "\"$audiusApiKeyBase64\""
                   )
               }
 
@@ -120,19 +129,22 @@ jobs:
 
           cat > app/src/main/res/values/styles.xml <<'EOF'
           <resources>
-              <style name="Theme.ShadowDJ" parent="android:style/Theme.Material.NoActionBar">
+              <style name="Theme.ShadowDJ"
+                  parent="android:style/Theme.Material.NoActionBar">
+
                   <item name="android:fontFamily">sans</item>
-                  <item name="android:windowActionModeOverlay">true</item>
                   <item name="android:colorAccent">#FFFFFF</item>
                   <item name="android:navigationBarColor">#000000</item>
                   <item name="android:statusBarColor">#000000</item>
                   <item name="android:windowLightStatusBar">false</item>
+
               </style>
           </resources>
           EOF
 
           cat > app/src/main/res/xml/network_security_config.xml <<'EOF'
           <?xml version="1.0" encoding="utf-8"?>
+
           <network-security-config>
               <base-config cleartextTrafficPermitted="false" />
           </network-security-config>
@@ -164,6 +176,7 @@ jobs:
                           <action android:name="android.intent.action.MAIN"/>
                           <category android:name="android.intent.category.LAUNCHER"/>
                       </intent-filter>
+
                   </activity>
 
                   <service
@@ -176,9 +189,11 @@ jobs:
                           <action android:name="androidx.media3.session.MediaSessionService"/>
                           <action android:name="android.media.browse.MediaBrowserService"/>
                       </intent-filter>
+
                   </service>
 
               </application>
+
           </manifest>
           EOF
 
@@ -187,7 +202,9 @@ jobs:
 
           import android.content.Intent
           import android.os.Binder
+          import android.os.Handler
           import android.os.IBinder
+          import android.util.Base64
           import androidx.media3.common.AudioAttributes
           import androidx.media3.common.C
           import androidx.media3.common.MediaItem
@@ -219,704 +236,90 @@ jobs:
               private var deckVolumeA = 1f
               private var deckVolumeB = 1f
 
-              private val executor = Executors.newSingleThreadExecutor()
-              private val queuedIds = HashSet<String>()
-
               private var autoDJ = false
               private var loading = false
-              private var currentGenre = ""
+              private var currentGenre = "ALL"
+
+              private val executor =
+                  Executors.newSingleThreadExecutor()
+
+              private val queuedIds =
+                  HashSet<String>()
 
               override fun onCreate() {
                   super.onCreate()
 
-                  player = ExoPlayer.Builder(this).build()
+                  player =
+                      ExoPlayer.Builder(this).build()
 
-                  val audioAttributes = AudioAttributes.Builder()
-                      .setUsage(C.USAGE_MEDIA)
-                      .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-                      .build()
+                  val audioAttributes =
+                      AudioAttributes.Builder()
+                          .setUsage(C.USAGE_MEDIA)
+                          .setContentType(
+                              C.AUDIO_CONTENT_TYPE_MUSIC
+                          )
+                          .build()
 
-                  player.setAudioAttributes(audioAttributes, false)
-                  player.repeatMode = Player.REPEAT_MODE_OFF
+                  player.setAudioAttributes(
+                      audioAttributes,
+                      false
+                  )
 
-                  player.addListener(object : Player.Listener {
-                      override fun onMediaItemTransition(
-                          mediaItem: MediaItem?,
-                          reason: Int
-                      ) {
-                          if (autoDJ && player.mediaItemCount - player.currentMediaItemIndex < 8) {
-                              loadMoreTracks()
-                          }
-                      }
+                  player.repeatMode =
+                      Player.REPEAT_MODE_OFF
 
-                      override fun onPlaybackStateChanged(state: Int) {
-                          if (
-                              autoDJ &&
-                              state == Player.STATE_ENDED &&
-                              player.mediaItemCount == 0
+                  player.addListener(
+                      object : Player.Listener {
+
+                          override fun onMediaItemTransition(
+                              mediaItem: MediaItem?,
+                              reason: Int
                           ) {
-                              loadMoreTracks()
+                              if (!autoDJ) return
+
+                              val remaining =
+                                  player.mediaItemCount -
+                                  player.currentMediaItemIndex
+
+                              if (remaining < 8) {
+                                  loadMoreTracks()
+                              }
+                          }
+
+                          override fun onPlaybackStateChanged(
+                              state: Int
+                          ) {
+                              if (
+                                  autoDJ &&
+                                  state ==
+                                  Player.STATE_ENDED
+                              ) {
+                                  loadMoreTracks()
+                              }
                           }
                       }
-                  })
+                  )
 
-                  mediaSession = MediaSession.Builder(this, player).build()
+                  mediaSession =
+                      MediaSession.Builder(
+                          this,
+                          player
+                      ).build()
               }
 
-              override fun onBind(intent: Intent?): IBinder? {
-                  return if (intent?.action == ACTION_BIND_DJ) {
+              override fun onBind(
+                  intent: Intent?
+              ): IBinder? {
+                  return if (
+                      intent?.action ==
+                      ACTION_BIND_DJ
+                  ) {
                       binder
                   } else {
                       super.onBind(intent)
                   }
               }
 
-              fun startAutoDJ(genre: String = "") {
-                  currentGenre = genre
-                  autoDJ = true
-                  player.clearMediaItems()
-                  queuedIds.clear()
-                  loadMoreTracks(true)
-              }
-
-              fun stopAutoDJ() {
-                  autoDJ = false
-              }
-
-              fun setGenre(genre: String) {
-                  currentGenre = genre
-                  if (autoDJ) {
-                      player.clearMediaItems()
-                      queuedIds.clear()
-                      loadMoreTracks(true)
-                  }
-              }
-
-              fun playPause() {
-                  if (player.isPlaying) player.pause()
-                  else player.play()
-              }
-
-              fun next() {
-                  player.seekToNext()
-              }
-
-              fun previous() {
-                  player.seekToPrevious()
-              }
-
-              fun setShuffle(enabled: Boolean) {
-                  player.shuffleModeEnabled = enabled
-              }
-
-              fun setRepeat(enabled: Boolean) {
-                  player.repeatMode =
-                      if (enabled) Player.REPEAT_MODE_ALL
-                      else Player.REPEAT_MODE_OFF
-              }
-
-              fun setMaster(value: Float) {
-                  master = value.coerceIn(0f, 1f)
-                  applyMixer()
-              }
-
-              fun setCrossfader(value: Float) {
-                  crossfader = value.coerceIn(0f, 1f)
-                  applyMixer()
-              }
-
-              fun setDeckVolume(deck: String, value: Float) {
-                  if (deck == "A") {
-                      deckVolumeA = value.coerceIn(0f, 1f)
-                  } else {
-                      deckVolumeB = value.coerceIn(0f, 1f)
-                  }
-
-                  applyMixer()
-              }
-
-              private fun applyMixer() {
-                  val a = ((1f - crossfader) * deckVolumeA * master)
-                      .coerceIn(0f, 1f)
-
-                  val b = (crossfader * deckVolumeB * master)
-                      .coerceIn(0f, 1f)
-
-                  // Auto DJ uses the main player as Deck A.
-                  player.volume = maxOf(a, b)
-              }
-
-              private fun loadMoreTracks(firstLoad: Boolean = false) {
-                  if (loading || !autoDJ) return
-
-                  loading = true
-
-                  executor.execute {
-                      try {
-                          val apiKey = BuildConfig.AUDIUS_API_KEY
-
-                          if (apiKey.isBlank()) {
-                              loading = false
-                              return@execute
-                          }
-
-                          val genreQuery =
-                              if (currentGenre.isBlank() || currentGenre == "ALL") {
-                                  ""
-                              } else {
-                                  "&genre=" + URLEncoder.encode(
-                                      currentGenre,
-                                      "UTF-8"
-                                  )
-                              }
-
-                          val urlString =
-                              "https://api.audius.co/v1/tracks/trending" +
-                              "?limit=50" +
-                              "&api_key=" +
-                              URLEncoder.encode(apiKey, "UTF-8") +
-                              genreQuery
-
-                          val connection =
-                              URL(urlString).openConnection() as HttpURLConnection
-
-                          connection.requestMethod = "GET"
-                          connection.connectTimeout = 15000
-                          connection.readTimeout = 20000
-
-                          val response =
-                              connection.inputStream.bufferedReader().use { it.readText() }
-
-                          connection.disconnect()
-
-                          val root = org.json.JSONObject(response)
-                          val data = root.optJSONArray("data") ?: JSONArray()
-
-                          val items = ArrayList<MediaItem>()
-
-                          for (i in 0 until data.length()) {
-                              val track = data.optJSONObject(i) ?: continue
-
-                              val id = track.optString("id")
-                              val title = track.optString(
-                                  "title",
-                                  "SHADOW DJ Track"
-                              )
-
-                              val streamable =
-                                  track.optBoolean("isStreamable", false)
-
-                              if (id.isBlank() || !streamable) continue
-                              if (queuedIds.contains(id)) continue
-
-                              val user =
-                                  track.optJSONObject("user")
-
-                              val artist =
-                                  user?.optString("name")
-                                      ?: "Audius Artist"
-
-                              val streamUrl =
-                                  "https://api.audius.co/v1/tracks/" +
-                                  id +
-                                  "/stream?api_key=" +
-                                  URLEncoder.encode(apiKey, "UTF-8")
-
-                              val item =
-                                  MediaItem.Builder()
-                                      .setUri(streamUrl)
-                                      .setMediaId(id)
-                                      .setTag("$artist — $title")
-                                      .build()
-
-                              items.add(item)
-                              queuedIds.add(id)
-
-                              if (items.size >= 25) break
-                          }
-
-                          if (items.isNotEmpty()) {
-                              runOnMainThread {
-                                  val wasEmpty = player.mediaItemCount == 0
-
-                                  player.addMediaItems(items)
-
-                                  if (wasEmpty || firstLoad) {
-                                      player.prepare()
-                                      player.play()
-                                  }
-                              }
-                          }
-
-                      } catch (_: Exception) {
-                      } finally {
-                          loading = false
-                      }
-                  }
-              }
-
-              private fun runOnMainThread(action: () -> Unit) {
-                  android.os.Handler(mainLooper).post {
-                      action()
-                  }
-              }
-
-              override fun onGetSession(
-                  controllerInfo: MediaSession.ControllerInfo
-              ): MediaSession? {
-                  return mediaSession
-              }
-
-              override fun onTaskRemoved(rootIntent: Intent?) {
-                  if (player.isPlaying) {
-                      player.play()
-                  }
-                  super.onTaskRemoved(rootIntent)
-              }
-
-              override fun onDestroy() {
-                  executor.shutdownNow()
-                  mediaSession?.release()
-                  player.release()
-                  super.onDestroy()
-              }
-
-              companion object {
-                  const val ACTION_BIND_DJ =
-                      "com.shadowdj.shadowdj.BIND_DJ"
-              }
-          }
-          EOF
-
-          cat > app/src/main/java/com/shadowdj/shadowdj/MainActivity.kt <<'EOF'
-          package com.shadowdj.shadowdj
-
-          import android.app.Activity
-          import android.app.PictureInPictureParams
-          import android.content.ComponentName
-          import android.content.Context
-          import android.content.Intent
-          import android.content.ServiceConnection
-          import android.net.Uri
-          import android.os.Bundle
-          import android.os.IBinder
-          import android.view.Gravity
-          import android.view.View
-          import android.webkit.WebChromeClient
-          import android.webkit.WebResourceRequest
-          import android.webkit.WebView
-          import android.webkit.WebViewClient
-          import android.widget.Button
-          import android.widget.LinearLayout
-          import android.widget.ScrollView
-          import android.widget.SeekBar
-          import android.widget.Spinner
-          import android.widget.ArrayAdapter
-          import android.widget.TextView
-          import androidx.appcompat.app.AppCompatActivity
-
-          class MainActivity : AppCompatActivity() {
-
-              private var service: PlaybackService? = null
-
-              private val connection = object : ServiceConnection {
-                  override fun onServiceConnected(
-                      name: ComponentName?,
-                      binder: IBinder?
-                  ) {
-                      service =
-                          (binder as PlaybackService.LocalBinder).service()
-                  }
-
-                  override fun onServiceDisconnected(name: ComponentName?) {
-                      service = null
-                  }
-              }
-
-              override fun onCreate(savedInstanceState: Bundle?) {
-                  super.onCreate(savedInstanceState)
-
-                  bindService(
-                      Intent(this, PlaybackService::class.java).apply {
-                          action = PlaybackService.ACTION_BIND_DJ
-                      },
-                      connection,
-                      Context.BIND_AUTO_CREATE
-                  )
-
-                  buildUI()
-              }
-
-              private fun buildUI() {
-
-                  val root = LinearLayout(this).apply {
-                      orientation = LinearLayout.VERTICAL
-                      setPadding(24, 24, 24, 24)
-                      gravity = Gravity.CENTER_HORIZONTAL
-                  }
-
-                  val title = TextView(this).apply {
-                      text = "SHADOW DJ"
-                      textSize = 30f
-                      gravity = Gravity.CENTER
-                  }
-
-                  root.addView(
-                      title,
-                      LinearLayout.LayoutParams(
-                          -1,
-                          LinearLayout.LayoutParams.WRAP_CONTENT
-                      )
-                  )
-
-                  val subtitle = TextView(this).apply {
-                      text = "AUTO DJ • MUSIC • MIX"
-                      textSize = 16f
-                      gravity = Gravity.CENTER
-                  }
-
-                  root.addView(subtitle)
-
-                  val genreLabel = TextView(this).apply {
-                      text = "Choose Genre"
-                      textSize = 18f
-                      setPadding(0, 30, 0, 8)
-                  }
-
-                  root.addView(genreLabel)
-
-                  val genres = arrayOf(
-                      "ALL",
-                      "Electronic",
-                      "House",
-                      "Tech House",
-                      "Deep House",
-                      "Techno",
-                      "Trance",
-                      "Drum & Bass",
-                      "Dubstep",
-                      "Trap",
-                      "Hip-Hop/Rap",
-                      "Pop",
-                      "Rock",
-                      "R&B/Soul",
-                      "Jazz",
-                      "Reggae",
-                      "Latin",
-                      "Lo-Fi",
-                      "Disco",
-                      "Future House",
-                      "Future Bass",
-                      "Hardstyle",
-                      "Jersey Club"
-                  )
-
-                  val spinner = Spinner(this).apply {
-                      adapter = ArrayAdapter(
-                          this@MainActivity,
-                          android.R.layout.simple_spinner_dropdown_item,
-                          genres
-                      )
-                  }
-
-                  root.addView(
-                      spinner,
-                      LinearLayout.LayoutParams(-1, 60)
-                  )
-
-                  val autoButton = Button(this).apply {
-                      text = "▶ START AUTO DJ"
-                      setOnClickListener {
-                          val genre =
-                              spinner.selectedItem?.toString() ?: "ALL"
-
-                          service?.startAutoDJ(genre)
-
-                          text = "■ AUTO DJ RUNNING"
-                      }
-                  }
-
-                  root.addView(
-                      autoButton,
-                      LinearLayout.LayoutParams(-1, 65)
-                  )
-
-                  val controls = LinearLayout(this).apply {
-                      orientation = LinearLayout.HORIZONTAL
-                      gravity = Gravity.CENTER
-                  }
-
-                  fun controlButton(
-                      textValue: String,
-                      action: () -> Unit
-                  ): Button {
-                      return Button(this).apply {
-                          text = textValue
-                          setOnClickListener { action() }
-
-                          controls.addView(
-                              this,
-                              LinearLayout.LayoutParams(
-                                  0,
-                                  65,
-                                  1f
-                              )
-                          )
-                      }
-                  }
-
-                  controlButton("⏮") {
-                      service?.previous()
-                  }
-
-                  controlButton("▶ / ⏸") {
-                      service?.playPause()
-                  }
-
-                  controlButton("⏭") {
-                      service?.next()
-                  }
-
-                  root.addView(controls)
-
-                  val shuffleButton = Button(this).apply {
-                      text = "SHUFFLE"
-                      setOnClickListener {
-                          service?.setShuffle(true)
-                      }
-                  }
-
-                  root.addView(
-                      shuffleButton,
-                      LinearLayout.LayoutParams(-1, 60)
-                  )
-
-                  val repeatButton = Button(this).apply {
-                      text = "REPEAT ALL"
-                      setOnClickListener {
-                          service?.setRepeat(true)
-                      }
-                  }
-
-                  root.addView(
-                      repeatButton,
-                      LinearLayout.LayoutParams(-1, 60)
-                  )
-
-                  addSlider(
-                      root,
-                      "MASTER",
-                      100
-                  ) { value ->
-                      service?.setMaster(value / 100f)
-                  }
-
-                  addSlider(
-                      root,
-                      "CROSSFADER A ← → B",
-                      50
-                  ) { value ->
-                      service?.setCrossfader(value / 100f)
-                  }
-
-                  val youtubeButton = Button(this).apply {
-                      text = "YOUTUBE"
-                      setOnClickListener {
-                          openWebView(
-                              "https://www.youtube.com/",
-                              "YouTube"
-                          )
-                      }
-                  }
-
-                  root.addView(
-                      youtubeButton,
-                      LinearLayout.LayoutParams(-1, 65)
-                  )
-
-                  val jangoButton = Button(this).apply {
-                      text = "JANGO"
-                      setOnClickListener {
-                          openWebView(
-                              "https://www.jango.com/",
-                              "Jango"
-                          )
-                      }
-                  }
-
-                  root.addView(
-                      jangoButton,
-                      LinearLayout.LayoutParams(-1, 65)
-                  )
-
-                  val pipButton = Button(this).apply {
-                      text = "YOUTUBE PiP"
-                      setOnClickListener {
-                          enterPip()
-                      }
-                  }
-
-                  root.addView(
-                      pipButton,
-                      LinearLayout.LayoutParams(-1, 65)
-                  )
-
-                  val info = TextView(this).apply {
-                      text =
-                          "SHADOW DJ can keep its own Auto DJ music playing in the background. " +
-                          "YouTube PiP still depends on Android and YouTube support."
-                      textSize = 14f
-                      setPadding(0, 25, 0, 25)
-                  }
-
-                  root.addView(info)
-
-                  val scroll = ScrollView(this)
-                  scroll.addView(root)
-
-                  setContentView(scroll)
-              }
-
-              private fun addSlider(
-                  root: LinearLayout,
-                  labelText: String,
-                  start: Int,
-                  listener: (Int) -> Unit
-              ) {
-                  val label = TextView(this).apply {
-                      text = labelText
-                      textSize = 16f
-                      setPadding(0, 20, 0, 4)
-                  }
-
-                  root.addView(label)
-
-                  val slider = SeekBar(this).apply {
-                      max = 100
-                      progress = start
-                      setOnSeekBarChangeListener(
-                          object : SeekBar.OnSeekBarChangeListener {
-                              override fun onProgressChanged(
-                                  seekBar: SeekBar?,
-                                  progress: Int,
-                                  fromUser: Boolean
-                              ) {
-                                  if (fromUser) listener(progress)
-                              }
-
-                              override fun onStartTrackingTouch(
-                                  seekBar: SeekBar?
-                              ) {}
-
-                              override fun onStopTrackingTouch(
-                                  seekBar: SeekBar?
-                              ) {}
-                          }
-                      )
-                  }
-
-                  root.addView(
-                      slider,
-                      LinearLayout.LayoutParams(-1, 60)
-                  )
-              }
-
-              private fun openWebView(
-                  url: String,
-                  titleText: String
-              ) {
-                  val webView = WebView(this)
-
-                  webView.settings.javaScriptEnabled = true
-                  webView.settings.domStorageEnabled = true
-                  webView.settings.mediaPlaybackRequiresUserGesture = true
-                  webView.settings.allowFileAccess = false
-                  webView.settings.allowContentAccess = false
-                  webView.settings.mixedContentMode =
-                      android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
-
-                  webView.webChromeClient = WebChromeClient()
-
-                  webView.webViewClient =
-                      object : WebViewClient() {
-                          override fun shouldOverrideUrlLoading(
-                              view: WebView?,
-                              request: WebResourceRequest?
-                          ): Boolean {
-                              val host =
-                                  request?.url?.host ?: return true
-
-                              return !(
-                                  host == "youtube.com" ||
-                                  host.endsWith(".youtube.com") ||
-                                  host == "youtu.be" ||
-                                  host == "jango.com" ||
-                                  host.endsWith(".jango.com")
-                              )
-                          }
-                      }
-
-                  setContentView(webView)
-                  webView.loadUrl(url)
-              }
-
-              private fun enterPip() {
-                  if (android.os.Build.VERSION.SDK_INT >= 26) {
-                      enterPictureInPictureMode(
-                          PictureInPictureParams.Builder().build()
-                      )
-                  }
-              }
-
-              override fun onUserLeaveHint() {
-                  super.onUserLeaveHint()
-
-                  if (android.os.Build.VERSION.SDK_INT >= 26) {
-                      enterPictureInPictureMode(
-                          PictureInPictureParams.Builder().build()
-                      )
-                  }
-              }
-
-              override fun onDestroy() {
-                  unbindService(connection)
-                  super.onDestroy()
-              }
-          }
-          EOF
-
-      - name: Build SHADOW DJ APK
-        working-directory: android-project
-        env:
-          AUDIUS_API_KEY: ${{ secrets.AUDIUS_API_KEY }}
-        run: |
-          gradle :app:assembleDebug --stacktrace
-
-      - name: Verify APK
-        working-directory: android-project
-        run: |
-          APK="app/build/outputs/apk/debug/app-debug.apk"
-
-          test -f "$APK"
-
-          echo "APK found:"
-          ls -lh "$APK"
-
-          $ANDROID_HOME/build-tools/35.0.0/aapt dump badging "$APK" | head -20
-
-          $ANDROID_HOME/build-tools/35.0.0/apksigner verify "$APK"
-
-      - name: Package APK
-        run: |
-          mkdir -p release
-          cp android-project/app/build/outputs/apk/debug/app-debug.apk \
-             release/SHADOW-DJ.apk
-
-          cd release
-          zip -9 SHADOW-DJ-APK.zip SHADOW-DJ.apk
-
-      - name: Upload SHADOW DJ APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: SHADOW-DJ-APK
-          path: release/SHADOW-DJ-APK.zip
+              private fun getApiKey(): String {
+                  return try {
+                      val encoded
