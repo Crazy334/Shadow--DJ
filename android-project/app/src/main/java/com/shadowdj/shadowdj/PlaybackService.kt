@@ -28,6 +28,10 @@ fun testAudius(): Boolean {
     return audiusClient.testConnection()
 }
 
+fun getOneAudiusStreamUrl(): String? {
+    return audiusClient.getOneStreamUrl()
+}
+
 override fun onCreate() {
     super.onCreate()
 
