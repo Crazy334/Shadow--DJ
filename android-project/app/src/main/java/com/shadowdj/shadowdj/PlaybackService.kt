@@ -2,13 +2,22 @@ package com.shadowdj.shadowdj
 
 import android.content.Intent
 import android.os.Binder
+import android.os.Handler
 import android.os.IBinder
+import android.util.Base64
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import org.json.JSONArray
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
+import java.util.concurrent.Executors
 
 class PlaybackService : MediaSessionService() {
 
@@ -23,16 +32,37 @@ class PlaybackService : MediaSessionService() {
 
     private var mediaSession: MediaSession? = null
 
+    private var master = 1f
+    private var crossfader = 0.5f
+    private var deckVolumeA = 1f
+    private var deckVolumeB = 1f
+
+    private var autoDJ = false
+    private var loading = false
+    private var currentGenre = "ALL"
+
+    private val executor =
+        Executors.newSingleThreadExecutor()
+
+    private val mainHandler =
+        Handler(mainLooper)
+
+    private val queuedIds =
+        HashSet<String>()
+
     override fun onCreate() {
         super.onCreate()
 
-        player = ExoPlayer.Builder(this)
-            .build()
+        player =
+            ExoPlayer.Builder(this)
+                .build()
 
         val audioAttributes =
             AudioAttributes.Builder()
                 .setUsage(C.USAGE_MEDIA)
-                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                .setContentType(
+                    C.AUDIO_CONTENT_TYPE_MUSIC
+                )
                 .build()
 
         player.setAudioAttributes(
@@ -42,6 +72,41 @@ class PlaybackService : MediaSessionService() {
 
         player.repeatMode =
             Player.REPEAT_MODE_OFF
+
+        player.addListener(
+            object : Player.Listener {
+
+                override fun onMediaItemTransition(
+                    mediaItem: MediaItem?,
+                    reason: Int
+                ) {
+
+                    if (!autoDJ) {
+                        return
+                    }
+
+                    val remaining =
+                        player.mediaItemCount -
+                        player.currentMediaItemIndex
+
+                    if (remaining < 8) {
+                        loadMoreTracks()
+                    }
+                }
+
+                override fun onPlaybackStateChanged(
+                    state: Int
+                ) {
+
+                    if (
+                        autoDJ &&
+                        state == Player.STATE_ENDED
+                    ) {
+                        loadMoreTracks()
+                    }
+                }
+            }
+        )
 
         mediaSession =
             MediaSession.Builder(
@@ -63,7 +128,82 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
+    private fun getApiKey(): String {
+
+        return try {
+
+            val encoded =
+                BuildConfig.AUDIUS_API_KEY_B64
+
+            if (encoded.isBlank()) {
+                return ""
+            }
+
+            val bytes =
+                Base64.decode(
+                    encoded,
+                    Base64.DEFAULT
+                )
+
+            String(
+                bytes,
+                Charsets.UTF_8
+            )
+
+        } catch (_: Exception) {
+
+            ""
+        }
+    }
+
+    fun startAutoDJ(
+        genre: String = "ALL"
+    ) {
+
+        currentGenre = genre
+        autoDJ = true
+        loading = false
+
+        player.stop()
+        player.clearMediaItems()
+
+        queuedIds.clear()
+
+        loadMoreTracks()
+    }
+
+    fun stopAutoDJ() {
+
+        autoDJ = false
+        loading = false
+
+        player.pause()
+        player.clearMediaItems()
+
+        queuedIds.clear()
+    }
+
+    fun setGenre(
+        genre: String
+    ) {
+
+        currentGenre = genre
+
+        if (autoDJ) {
+
+            player.stop()
+            player.clearMediaItems()
+
+            queuedIds.clear()
+
+            loading = false
+
+            loadMoreTracks()
+        }
+    }
+
     fun playPause() {
+
         if (player.isPlaying) {
             player.pause()
         } else {
@@ -72,12 +212,14 @@ class PlaybackService : MediaSessionService() {
     }
 
     fun next() {
+
         if (player.hasNextMediaItem()) {
             player.seekToNext()
         }
     }
 
     fun previous() {
+
         if (player.hasPreviousMediaItem()) {
             player.seekToPrevious()
         }
@@ -86,12 +228,15 @@ class PlaybackService : MediaSessionService() {
     fun setShuffle(
         enabled: Boolean
     ) {
-        player.shuffleModeEnabled = enabled
+
+        player.shuffleModeEnabled =
+            enabled
     }
 
     fun setRepeat(
         enabled: Boolean
     ) {
+
         player.repeatMode =
             if (enabled) {
                 Player.REPEAT_MODE_ALL
@@ -103,67 +248,323 @@ class PlaybackService : MediaSessionService() {
     fun setMaster(
         value: Float
     ) {
-        player.volume =
+
+        master =
             value.coerceIn(
                 0f,
                 1f
             )
+
+        applyMixer()
     }
 
     fun setCrossfader(
         value: Float
     ) {
-        // Mixer control will be added
-        // after the basic player is confirmed stable.
+
+        crossfader =
+            value.coerceIn(
+                0f,
+                1f
+            )
+
+        applyMixer()
     }
 
     fun setDeckVolume(
         deck: String,
         value: Float
     ) {
-        // Deck mixer control will be added
-        // after the basic player is confirmed stable.
+
+        if (deck == "A") {
+
+            deckVolumeA =
+                value.coerceIn(
+                    0f,
+                    1f
+                )
+
+        } else {
+
+            deckVolumeB =
+                value.coerceIn(
+                    0f,
+                    1f
+                )
+        }
+
+        applyMixer()
     }
 
-    fun startAutoDJ(
-        genre: String = "ALL"
-    ) {
-        // Audius Auto DJ will be connected
-        // after the service startup is confirmed stable.
+    private fun applyMixer() {
+
+        val volumeA =
+            (1f - crossfader) *
+            deckVolumeA *
+            master
+
+        val volumeB =
+            crossfader *
+            deckVolumeB *
+            master
+
+        player.volume =
+            maxOf(
+                volumeA,
+                volumeB
+            ).coerceIn(
+                0f,
+                1f
+            )
     }
 
-    fun stopAutoDJ() {
-        player.pause()
-    }
+    private fun loadMoreTracks() {
 
-    fun setGenre(
-        genre: String
-    ) {
-        // Genre selection will be connected
-        // to Audius after startup testing.
+        if (
+            loading ||
+            !autoDJ
+        ) {
+            return
+        }
+
+        loading = true
+
+        executor.execute {
+
+            try {
+
+                val apiKey =
+                    getApiKey()
+
+                if (apiKey.isBlank()) {
+
+                    mainHandler.post {
+                        loading = false
+                    }
+
+                    return@execute
+                }
+
+                val encodedKey =
+                    URLEncoder.encode(
+                        apiKey,
+                        "UTF-8"
+                    )
+
+                val urlText =
+                    if (
+                        currentGenre.isBlank() ||
+                        currentGenre == "ALL"
+                    ) {
+
+                        "https://api.audius.co/v1/tracks/trending" +
+                        "?limit=50" +
+                        "&api_key=" +
+                        encodedKey
+
+                    } else {
+
+                        "https://api.audius.co/v1/tracks/trending" +
+                        "?limit=50" +
+                        "&api_key=" +
+                        encodedKey +
+                        "&genre=" +
+                        URLEncoder.encode(
+                            currentGenre,
+                            "UTF-8"
+                        )
+                    }
+
+                val connection =
+                    URL(urlText)
+                        .openConnection()
+                        as HttpURLConnection
+
+                connection.requestMethod =
+                    "GET"
+
+                connection.connectTimeout =
+                    15000
+
+                connection.readTimeout =
+                    20000
+
+                val responseCode =
+                    connection.responseCode
+
+                if (
+                    responseCode !in 200..299
+                ) {
+
+                    connection.disconnect()
+
+                    mainHandler.post {
+                        loading = false
+                    }
+
+                    return@execute
+                }
+
+                val response =
+                    connection
+                        .inputStream
+                        .bufferedReader()
+                        .use {
+                            it.readText()
+                        }
+
+                connection.disconnect()
+
+                val root =
+                    JSONObject(response)
+
+                val data =
+                    root.optJSONArray(
+                        "data"
+                    ) ?: JSONArray()
+
+                val newItems =
+                    ArrayList<MediaItem>()
+
+                for (
+                    i in 0 until data.length()
+                ) {
+
+                    val track =
+                        data.optJSONObject(i)
+                            ?: continue
+
+                    val id =
+                        track.optString(
+                            "id"
+                        )
+
+                    val title =
+                        track.optString(
+                            "title",
+                            "SHADOW DJ"
+                        )
+
+                    val streamable =
+                        track.optBoolean(
+                            "isStreamable",
+                            false
+                        )
+
+                    if (
+                        id.isBlank() ||
+                        !streamable ||
+                        queuedIds.contains(id)
+                    ) {
+                        continue
+                    }
+
+                    val user =
+                        track.optJSONObject(
+                            "user"
+                        )
+
+                    val artist =
+                        user?.optString(
+                            "name",
+                            "Audius Artist"
+                        ) ?: "Audius Artist"
+
+                    val streamUrl =
+                        "https://api.audius.co/v1/tracks/" +
+                        id +
+                        "/stream?api_key=" +
+                        encodedKey
+
+                    val mediaItem =
+                        MediaItem.Builder()
+                            .setUri(streamUrl)
+                            .setMediaId(id)
+                            .setTag(
+                                "$artist — $title"
+                            )
+                            .build()
+
+                    newItems.add(
+                        mediaItem
+                    )
+
+                    queuedIds.add(id)
+
+                    if (
+                        newItems.size >= 25
+                    ) {
+                        break
+                    }
+                }
+
+                mainHandler.post {
+
+                    if (
+                        autoDJ &&
+                        newItems.isNotEmpty()
+                    ) {
+
+                        val wasEmpty =
+                            player.mediaItemCount == 0
+
+                        player.addMediaItems(
+                            newItems
+                        )
+
+                        if (wasEmpty) {
+
+                            player.prepare()
+                            player.play()
+                        }
+                    }
+
+                    loading = false
+                }
+
+            } catch (_: Exception) {
+
+                mainHandler.post {
+                    loading = false
+                }
+            }
+        }
     }
 
     override fun onGetSession(
-        controllerInfo: MediaSession.ControllerInfo
+        controllerInfo:
+            MediaSession.ControllerInfo
     ): MediaSession? {
+
         return mediaSession
     }
 
     override fun onTaskRemoved(
         rootIntent: Intent?
     ) {
-        super.onTaskRemoved(rootIntent)
+
+        if (autoDJ) {
+            player.play()
+        }
+
+        super.onTaskRemoved(
+            rootIntent
+        )
     }
 
     override fun onDestroy() {
 
+        executor.shutdownNow()
+
         mediaSession?.release()
+
         player.release()
 
         super.onDestroy()
     }
 
     companion object {
+
         const val ACTION_BIND_DJ =
             "com.shadowdj.shadowdj.BIND_DJ"
     }
