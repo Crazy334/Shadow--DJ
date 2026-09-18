@@ -22,7 +22,8 @@ class PlaybackService : MediaSessionService() {
         private set
 
     private var mediaSession: MediaSession? = null
-
+    private val audiusClient = AudiusClient()
+    
     override fun onCreate() {
         super.onCreate()
 
