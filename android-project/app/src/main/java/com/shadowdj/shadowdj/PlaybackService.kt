@@ -22,13 +22,17 @@ class PlaybackService : MediaSessionService() {
         private set
 
     private var mediaSession: MediaSession? = null
-    private val audiusClient = AudiusClient()
-    
-    override fun onCreate() {
-        super.onCreate()
+private val audiusClient = AudiusClient()
 
-        player = ExoPlayer.Builder(this)
-            .build()
+fun testAudius(): Boolean {
+    return audiusClient.testConnection()
+}
+
+override fun onCreate() {
+    super.onCreate()
+
+    player = ExoPlayer.Builder(this)
+        .build()
 
         val audioAttributes =
             AudioAttributes.Builder()
