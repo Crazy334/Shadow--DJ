@@ -156,9 +156,15 @@ class AudiusClient {
                     encodedKey
             }
 
-            null
+                        null
 
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+
+            android.util.Log.e(
+                "SHADOW_AUDIUS",
+                "Audius error: ${e.message}",
+                e
+            )
 
             null
         }
