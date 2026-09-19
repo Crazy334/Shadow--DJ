@@ -32,6 +32,24 @@ fun getOneAudiusStreamUrl(): String? {
     return audiusClient.getOneStreamUrl()
 }
 
+fun playOneAudiusTrack() {
+    Thread {
+        val streamUrl = getOneAudiusStreamUrl()
+
+        if (streamUrl.isNullOrBlank()) {
+            return@Thread
+        }
+
+        android.os.Handler(mainLooper).post {
+            player.setMediaItem(
+                androidx.media3.common.MediaItem.fromUri(streamUrl)
+            )
+            player.prepare()
+            player.play()
+        }
+    }.start()
+}
+
 override fun onCreate() {
     super.onCreate()
 
