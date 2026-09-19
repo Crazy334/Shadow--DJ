@@ -450,9 +450,30 @@ class MainActivity : AppCompatActivity() {
         )
 
         root.addView(
-            crossfader,
-            matchParams()
-        )
+    crossfader,
+    matchParams()
+)
+
+val testAudius =
+    Button(this)
+
+testAudius.text =
+    "TEST AUDIUS"
+
+testAudius.setOnClickListener {
+
+    playbackService
+        ?.playOneAudiusTrack()
+
+    statusText.text =
+        "AUDIUS • TESTING"
+}
+
+root.addView(
+    testAudius,
+    matchParams()
+)
+
 
         setContentView(root)
     }
