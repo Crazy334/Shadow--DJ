@@ -11,16 +11,18 @@ class AudiusClient {
 
     private fun getApiKey(): String {
         return try {
-            val encoded = BuildConfig.AUDIUS_API_KEY_B64
+            val encoded =
+                BuildConfig.AUDIUS_API_KEY_B64
 
             if (encoded.isBlank()) {
                 return ""
             }
 
-            val bytes = Base64.decode(
-                encoded,
-                Base64.DEFAULT
-            )
+            val bytes =
+                Base64.decode(
+                    encoded,
+                    Base64.DEFAULT
+                )
 
             String(
                 bytes,
@@ -32,37 +34,83 @@ class AudiusClient {
         }
     }
 
-    fun testConnection(): Boolean {
+    private fun getTrendingResponse(): String? {
         return try {
 
-            val apiKey = getApiKey()
+            val apiKey =
+                getApiKey()
 
             if (apiKey.isBlank()) {
-                return false
+                return null
             }
 
-            val url =
-                "https://api.audius.co/v1/tracks/trending" +
-                "?limit=1" +
-                "&api_key=" +
+            val encodedKey =
                 URLEncoder.encode(
                     apiKey,
                     "UTF-8"
                 )
 
+            val url =
+                "https://api.audius.co/v1/tracks/trending" +
+                "?limit=20" +
+                "&api_key=" +
+                encodedKey
+
             val connection =
                 URL(url)
                     .openConnection() as HttpURLConnection
 
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 10000
-            connection.readTimeout = 10000
+            connection.requestMethod =
+                "GET"
 
-            val code = connection.responseCode
+            connection.connectTimeout =
+                10000
+
+            connection.readTimeout =
+                15000
+
+            val code =
+                connection.responseCode
+
+            if (code !in 200..299) {
+                connection.disconnect()
+                return null
+            }
+
+            val response =
+                connection.inputStream
+                    .bufferedReader()
+                    .use {
+                        it.readText()
+                    }
 
             connection.disconnect()
 
-            code in 200..299
+            response
+
+        } catch (e: Exception) {
+
+            android.util.Log.e(
+                "SHADOW_AUDIUS",
+                "Trending error: ${e.message}",
+                e
+            )
+
+            null
+        }
+    }
+
+    fun testConnection(): Boolean {
+        return try {
+
+            val response =
+                getTrendingResponse()
+                    ?: return false
+
+            val root =
+                JSONObject(response)
+
+            root.has("data")
 
         } catch (_: Exception) {
             false
@@ -72,47 +120,16 @@ class AudiusClient {
     fun getOneStreamUrl(): String? {
         return try {
 
-            val apiKey = getApiKey()
+            val apiKey =
+                getApiKey()
 
             if (apiKey.isBlank()) {
                 return null
             }
 
-            val encodedKey =
-                URLEncoder.encode(
-                    apiKey,
-                    "UTF-8"
-                )
-
-            val url =
-                "https://api.audius.co/v1/tracks/trending" +
-                "?limit=20" +
-                "&api_key=" +
-                encodedKey
-
-            val connection =
-                URL(url)
-                    .openConnection() as HttpURLConnection
-
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 10000
-            connection.readTimeout = 15000
-
-            val code = connection.responseCode
-
-            if (code !in 200..299) {
-                connection.disconnect()
-                return null
-            }
-
             val response =
-                connection.inputStream
-                    .bufferedReader()
-                    .use {
-                        it.readText()
-                    }
-
-            connection.disconnect()
+                getTrendingResponse()
+                    ?: return null
 
             val root =
                 JSONObject(response)
@@ -121,6 +138,12 @@ class AudiusClient {
                 root.optJSONArray("data")
                     ?: JSONArray()
 
+            val encodedKey =
+                URLEncoder.encode(
+                    apiKey,
+                    "UTF-8"
+                )
+
             for (i in 0 until data.length()) {
 
                 val track =
@@ -130,33 +153,19 @@ class AudiusClient {
                 val id =
                     track.optString("id")
 
-                val streamableValue =
-                    track.opt("isStreamable")
-
-                val streamable =
-                    when (streamableValue) {
-                        is Boolean -> streamableValue
-
-                        is String ->
-                            streamableValue.equals(
-                                "true",
-                                ignoreCase = true
-                            )
-
-                        else -> false
-                    }
-
-                if (
-                    id.isBlank() ||
-                    !streamable
-                ) {
+                if (id.isBlank()) {
                     continue
                 }
 
-                return "https://api.audius.co/v1/tracks/" +
+                val streamUrl =
+                    "https://api.audius.co/v1/tracks/" +
                     id +
                     "/stream?api_key=" +
                     encodedKey
+
+                if (testStreamUrl(streamUrl)) {
+                    return streamUrl
+                }
             }
 
             null
@@ -165,7 +174,7 @@ class AudiusClient {
 
             android.util.Log.e(
                 "SHADOW_AUDIUS",
-                "Audius error: ${e.message}",
+                "Stream search error: ${e.message}",
                 e
             )
 
@@ -173,62 +182,67 @@ class AudiusClient {
         }
     }
 
+    private fun testStreamUrl(
+        streamUrl: String
+    ): Boolean {
+
+        return try {
+
+            val connection =
+                URL(streamUrl)
+                    .openConnection() as HttpURLConnection
+
+            connection.requestMethod =
+                "GET"
+
+            connection.connectTimeout =
+                10000
+
+            connection.readTimeout =
+                10000
+
+            connection.instanceFollowRedirects =
+                true
+
+            val code =
+                connection.responseCode
+
+            connection.disconnect()
+
+            code in 200..299 ||
+                code == HttpURLConnection.HTTP_PARTIAL
+
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     fun getDiagnostic(): String {
         return try {
 
-            val apiKey = getApiKey()
+            val apiKey =
+                getApiKey()
 
             if (apiKey.isBlank()) {
                 return "API KEY EMPTY"
             }
 
-            val encodedKey =
-                URLEncoder.encode(
-                    apiKey,
-                    "UTF-8"
-                )
-
-            val url =
-                "https://api.audius.co/v1/tracks/trending" +
-                "?limit=20" +
-                "&api_key=" +
-                encodedKey
-
-            val connection =
-                URL(url)
-                    .openConnection() as HttpURLConnection
-
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 10000
-            connection.readTimeout = 15000
-
-            val code =
-                connection.responseCode
-
-            if (code !in 200..299) {
-                connection.disconnect()
-                return "HTTP ERROR $code"
-            }
-
             val response =
-                connection.inputStream
-                    .bufferedReader()
-                    .use {
-                        it.readText()
-                    }
-
-            connection.disconnect()
+                getTrendingResponse()
+                    ?: return "TRENDING REQUEST FAILED"
 
             val root =
                 JSONObject(response)
 
             val data =
                 root.optJSONArray("data")
-                    ?: return "HTTP $code • NO DATA"
+                    ?: return "HTTP 200 • NO DATA"
 
             if (data.length() == 0) {
-                return "HTTP $code • TRACKS 0"
+                return "HTTP 200 • TRACKS 0"
             }
+
+            var tracksChecked = 0
 
             for (i in 0 until data.length()) {
 
@@ -239,31 +253,37 @@ class AudiusClient {
                 val id =
                     track.optString("id")
 
-                val streamableValue =
-                    track.opt("isStreamable")
+                if (id.isBlank()) {
+                    continue
+                }
 
-                val streamable =
-                    when (streamableValue) {
-                        is Boolean -> streamableValue
+                tracksChecked++
 
-                        is String ->
-                            streamableValue.equals(
-                                "true",
-                                ignoreCase = true
-                            )
+                val encodedKey =
+                    URLEncoder.encode(
+                        apiKey,
+                        "UTF-8"
+                    )
 
-                        else -> false
-                    }
+                val streamUrl =
+                    "https://api.audius.co/v1/tracks/" +
+                    id +
+                    "/stream?api_key=" +
+                    encodedKey
 
-                if (
-                    id.isNotBlank() &&
-                    streamable
-                ) {
-                    return "HTTP $code • TRACKS ${data.length()} • PLAYABLE FOUND"
+                if (testStreamUrl(streamUrl)) {
+
+                    val title =
+                        track.optString(
+                            "title",
+                            "Unknown Track"
+                        )
+
+                    return "HTTP 200 • TRACKS ${data.length()} • PLAYABLE FOUND • $title"
                 }
             }
 
-            "HTTP $code • TRACKS ${data.length()} • NO PLAYABLE TRACKS"
+            "HTTP 200 • TRACKS ${data.length()} • STREAM TEST FAILED ($tracksChecked CHECKED)"
 
         } catch (e: Exception) {
 
