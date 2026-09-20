@@ -462,11 +462,25 @@ testAudius.text =
 
 testAudius.setOnClickListener {
 
-    playbackService
-        ?.playOneAudiusTrack()
+    if (playbackService == null) {
+
+        statusText.text =
+            "AUDIUS • SERVICE NOT CONNECTED"
+
+        android.widget.Toast.makeText(
+            this,
+            "SHADOW DJ service is not connected",
+            android.widget.Toast.LENGTH_LONG
+        ).show()
+
+        return@setOnClickListener
+    }
 
     statusText.text =
         "AUDIUS • TESTING"
+
+    playbackService
+        ?.playOneAudiusTrack()
 }
 
 root.addView(
