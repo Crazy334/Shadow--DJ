@@ -477,17 +477,28 @@ testAudius.setOnClickListener {
     }
 
     statusText.text =
-        "AUDIUS • TESTING"
+        "AUDIUS • DIAGNOSING..."
 
-    playbackService
-        ?.playOneAudiusTrack()
+    Thread {
+
+        val result =
+            playbackService
+                ?.getAudiusDiagnostic()
+                ?: "SERVICE NOT CONNECTED"
+
+        runOnUiThread {
+
+            statusText.text =
+                "AUDIUS • $result"
+        }
+
+    }.start()
 }
 
 root.addView(
     testAudius,
     matchParams()
 )
-
 
         setContentView(root)
     }
