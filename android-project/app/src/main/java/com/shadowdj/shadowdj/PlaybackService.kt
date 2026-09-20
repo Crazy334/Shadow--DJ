@@ -13,7 +13,8 @@ import androidx.media3.session.MediaSessionService
 class PlaybackService : MediaSessionService() {
 
     inner class LocalBinder : Binder() {
-        fun service(): PlaybackService = this@PlaybackService
+        fun service(): PlaybackService =
+            this@PlaybackService
     }
 
     private val binder = LocalBinder()
@@ -22,60 +23,79 @@ class PlaybackService : MediaSessionService() {
         private set
 
     private var mediaSession: MediaSession? = null
-private val audiusClient = AudiusClient()
 
-fun testAudius(): Boolean {
-    return audiusClient.testConnection()
-}
+    private val audiusClient =
+        AudiusClient()
 
-fun getOneAudiusStreamUrl(): String? {
-    return audiusClient.getOneStreamUrl()
-}
-fun getAudiusDiagnostic(): String {
-    return audiusClient.getDiagnostic()
-}
-fun playOneAudiusTrack() {
-    Thread {
-        val streamUrl = getOneAudiusStreamUrl()
+    private var autoDJEnabled = false
+    private var autoDJGenre = "ALL"
 
-        android.os.Handler(mainLooper).post {
-            if (streamUrl.isNullOrBlank()) {
+    fun testAudius(): Boolean {
+        return audiusClient.testConnection()
+    }
+
+    fun getOneAudiusStreamUrl(): String? {
+        return audiusClient.getOneStreamUrl()
+    }
+
+    fun getAudiusDiagnostic(): String {
+        return audiusClient.getDiagnostic()
+    }
+
+    fun playOneAudiusTrack() {
+
+        Thread {
+
+            val streamUrl =
+                getOneAudiusStreamUrl()
+
+            android.os.Handler(
+                mainLooper
+            ).post {
+
+                if (streamUrl.isNullOrBlank()) {
+
+                    android.widget.Toast.makeText(
+                        this,
+                        "AUDIUS: No stream URL found",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+
+                    return@post
+                }
+
                 android.widget.Toast.makeText(
                     this,
-                    "AUDIUS: No stream URL found",
+                    "AUDIUS: Stream URL found",
                     android.widget.Toast.LENGTH_LONG
                 ).show()
 
-                return@post
+                player.setMediaItem(
+                    androidx.media3.common.MediaItem.fromUri(
+                        streamUrl
+                    )
+                )
+
+                player.prepare()
+                player.play()
             }
 
-            android.widget.Toast.makeText(
-                this,
-                "AUDIUS: Stream URL found",
-                android.widget.Toast.LENGTH_LONG
-            ).show()
+        }.start()
+    }
 
-            player.setMediaItem(
-                androidx.media3.common.MediaItem.fromUri(
-                    streamUrl
-                )
-            )
+    override fun onCreate() {
 
-            player.prepare()
-            player.play()
-        }
-    }.start()
-}
+        super.onCreate()
 
-override fun onCreate() {
-    super.onCreate()
-
-    player = ExoPlayer.Builder(this)
-        .build()
+        player =
+            ExoPlayer.Builder(this)
+                .build()
 
         val audioAttributes =
             AudioAttributes.Builder()
-                .setUsage(C.USAGE_MEDIA)
+                .setUsage(
+                    C.USAGE_MEDIA
+                )
                 .setContentType(
                     C.AUDIO_CONTENT_TYPE_MUSIC
                 )
@@ -89,6 +109,24 @@ override fun onCreate() {
         player.repeatMode =
             Player.REPEAT_MODE_OFF
 
+        player.addListener(
+            object : Player.Listener {
+
+                override fun onPlaybackStateChanged(
+                    playbackState: Int
+                ) {
+
+                    if (
+                        playbackState ==
+                        Player.STATE_ENDED &&
+                        autoDJEnabled
+                    ) {
+                        playNextAutoDJTrack()
+                    }
+                }
+            }
+        )
+
         mediaSession =
             MediaSession.Builder(
                 this,
@@ -97,13 +135,14 @@ override fun onCreate() {
     }
 
     override fun onBind(
-    intent: Intent?
-): IBinder? {
+        intent: Intent?
+    ): IBinder? {
 
-    return binder
+        return binder
     }
 
     fun playPause() {
+
         if (player.isPlaying) {
             player.pause()
         } else {
@@ -112,12 +151,19 @@ override fun onCreate() {
     }
 
     fun next() {
+
         if (player.hasNextMediaItem()) {
+
             player.seekToNext()
+
+        } else if (autoDJEnabled) {
+
+            playNextAutoDJTrack()
         }
     }
 
     fun previous() {
+
         if (player.hasPreviousMediaItem()) {
             player.seekToPrevious()
         }
@@ -126,6 +172,7 @@ override fun onCreate() {
     fun setShuffle(
         enabled: Boolean
     ) {
+
         player.shuffleModeEnabled =
             enabled
     }
@@ -133,6 +180,7 @@ override fun onCreate() {
     fun setRepeat(
         enabled: Boolean
     ) {
+
         player.repeatMode =
             if (enabled) {
                 Player.REPEAT_MODE_ALL
@@ -144,6 +192,7 @@ override fun onCreate() {
     fun setMaster(
         value: Float
     ) {
+
         player.volume =
             value.coerceIn(
                 0f,
@@ -154,34 +203,94 @@ override fun onCreate() {
     fun setCrossfader(
         value: Float
     ) {
-        // Mixer control will be added
-        // after the basic player is confirmed stable.
+        // Mixer control will be added later.
     }
 
     fun setDeckVolume(
         deck: String,
         value: Float
     ) {
-        // Deck mixer control will be added
-        // after the basic player is confirmed stable.
+        // Deck mixer control will be added later.
     }
 
     fun startAutoDJ(
         genre: String = "ALL"
     ) {
-        // Audius Auto DJ will be connected
-        // after the service startup is confirmed stable.
+
+        autoDJGenre =
+            if (genre.isBlank()) {
+                "ALL"
+            } else {
+                genre
+            }
+
+        autoDJEnabled = true
+
+        playNextAutoDJTrack()
     }
 
     fun stopAutoDJ() {
+
+        autoDJEnabled = false
+
         player.pause()
+    }
+
+    private fun playNextAutoDJTrack() {
+
+        if (!autoDJEnabled) {
+            return
+        }
+
+        Thread {
+
+            val streamUrl =
+                audiusClient.getNextStreamUrl(
+                    autoDJGenre
+                )
+
+            android.os.Handler(
+                mainLooper
+            ).post {
+
+                if (!autoDJEnabled) {
+                    return@post
+                }
+
+                if (streamUrl.isNullOrBlank()) {
+
+                    android.widget.Toast.makeText(
+                        this,
+                        "AUTO DJ: No playable track found",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+
+                    return@post
+                }
+
+                player.setMediaItem(
+                    androidx.media3.common.MediaItem.fromUri(
+                        streamUrl
+                    )
+                )
+
+                player.prepare()
+                player.play()
+            }
+
+        }.start()
     }
 
     fun setGenre(
         genre: String
     ) {
-        // Genre selection will be connected
-        // to Audius after startup testing.
+
+        autoDJGenre =
+            if (genre.isBlank()) {
+                "ALL"
+            } else {
+                genre
+            }
     }
 
     override fun onGetSession(
@@ -195,12 +304,16 @@ override fun onCreate() {
     override fun onTaskRemoved(
         rootIntent: Intent?
     ) {
-        super.onTaskRemoved(rootIntent)
+
+        super.onTaskRemoved(
+            rootIntent
+        )
     }
 
     override fun onDestroy() {
 
         mediaSession?.release()
+
         player.release()
 
         super.onDestroy()
