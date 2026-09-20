@@ -178,7 +178,7 @@ val streamable =
         }
     }
    fun getDiagnostic(): String {
-
+}
     return try {
 
         val apiKey = getApiKey()
