@@ -95,16 +95,10 @@ override fun onCreate() {
     }
 
     override fun onBind(
-        intent: Intent?
-    ): IBinder? {
+    intent: Intent?
+): IBinder? {
 
-        return if (
-            intent?.action == ACTION_BIND_DJ
-        ) {
-            binder
-        } else {
-            super.onBind(intent)
-        }
+    return binder
     }
 
     fun playPause() {
