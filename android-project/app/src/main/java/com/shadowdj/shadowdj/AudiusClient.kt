@@ -176,5 +176,104 @@ val streamable =
 
             null
         }
+  
+   fun getDiagnostic(): String {
+
+    return try {
+
+        val apiKey = getApiKey()
+
+        if (apiKey.isBlank()) {
+            return "API KEY EMPTY"
+        }
+
+        val encodedKey =
+            URLEncoder.encode(
+                apiKey,
+                "UTF-8"
+            )
+
+        val url =
+            "https://api.audius.co/v1/tracks/trending" +
+            "?limit=20" +
+            "&api_key=" +
+            encodedKey
+
+        val connection =
+            URL(url)
+                .openConnection()
+                as HttpURLConnection
+
+        connection.requestMethod = "GET"
+        connection.connectTimeout = 10000
+        connection.readTimeout = 15000
+
+        val code =
+            connection.responseCode
+
+        if (code !in 200..299) {
+            connection.disconnect()
+            return "HTTP ERROR $code"
+        }
+
+        val response =
+            connection
+                .inputStream
+                .bufferedReader()
+                .use {
+                    it.readText()
+                }
+
+        connection.disconnect()
+
+        val root =
+            JSONObject(response)
+
+        val data =
+            root.optJSONArray("data")
+                ?: return "HTTP $code • NO DATA"
+
+        if (data.length() == 0) {
+            return "HTTP $code • TRACKS 0"
+        }
+
+        for (i in 0 until data.length()) {
+
+            val track =
+                data.optJSONObject(i)
+                    ?: continue
+
+            val id =
+                track.optString("id")
+
+            val streamableValue =
+                track.opt("isStreamable")
+
+            val streamable =
+                when (streamableValue) {
+                    is Boolean -> streamableValue
+                    is String ->
+                        streamableValue.equals(
+                            "true",
+                            ignoreCase = true
+                        )
+                    else -> false
+                }
+
+            if (
+                id.isNotBlank() &&
+                streamable
+            ) {
+                return "HTTP $code • TRACKS ${data.length()} • PLAYABLE FOUND"
+            }
+        }
+
+        return "HTTP $code • TRACKS ${data.length()} • NO PLAYABLE TRACKS"
+
+    } catch (e: Exception) {
+
+        return "ERROR • ${e.javaClass.simpleName}: ${e.message ?: "unknown"}"
+    }
+   }
     }
 }
