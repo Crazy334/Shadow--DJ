@@ -33,7 +33,6 @@ class AudiusClient {
     }
 
     fun testConnection(): Boolean {
-
         return try {
 
             val apiKey = getApiKey()
@@ -53,8 +52,7 @@ class AudiusClient {
 
             val connection =
                 URL(url)
-                    .openConnection()
-                    as HttpURLConnection
+                    .openConnection() as HttpURLConnection
 
             connection.requestMethod = "GET"
             connection.connectTimeout = 10000
@@ -67,13 +65,11 @@ class AudiusClient {
             code in 200..299
 
         } catch (_: Exception) {
-
             false
         }
     }
 
     fun getOneStreamUrl(): String? {
-
         return try {
 
             val apiKey = getApiKey()
@@ -96,8 +92,7 @@ class AudiusClient {
 
             val connection =
                 URL(url)
-                    .openConnection()
-                    as HttpURLConnection
+                    .openConnection() as HttpURLConnection
 
             connection.requestMethod = "GET"
             connection.connectTimeout = 10000
@@ -111,8 +106,7 @@ class AudiusClient {
             }
 
             val response =
-                connection
-                    .inputStream
+                connection.inputStream
                     .bufferedReader()
                     .use {
                         it.readText()
@@ -124,9 +118,8 @@ class AudiusClient {
                 JSONObject(response)
 
             val data =
-                root.optJSONArray(
-                    "data"
-                ) ?: JSONArray()
+                root.optJSONArray("data")
+                    ?: JSONArray()
 
             for (i in 0 until data.length()) {
 
@@ -138,18 +131,20 @@ class AudiusClient {
                     track.optString("id")
 
                 val streamableValue =
-    track.opt("isStreamable")
+                    track.opt("isStreamable")
 
-val streamable =
-    when (streamableValue) {
-        is Boolean -> streamableValue
-        is String -> streamableValue.equals(
-            "true",
-            ignoreCase = true
-        )
-        else -> false
-    }
-                    
+                val streamable =
+                    when (streamableValue) {
+                        is Boolean -> streamableValue
+
+                        is String ->
+                            streamableValue.equals(
+                                "true",
+                                ignoreCase = true
+                            )
+
+                        else -> false
+                    }
 
                 if (
                     id.isBlank() ||
@@ -164,7 +159,7 @@ val streamable =
                     encodedKey
             }
 
-                        null
+            null
 
         } catch (e: Exception) {
 
@@ -177,103 +172,102 @@ val streamable =
             null
         }
     }
-   fun getDiagnostic(): String {
-}
-    return try {
 
-        val apiKey = getApiKey()
+    fun getDiagnostic(): String {
+        return try {
 
-        if (apiKey.isBlank()) {
-            return "API KEY EMPTY"
-        }
+            val apiKey = getApiKey()
 
-        val encodedKey =
-            URLEncoder.encode(
-                apiKey,
-                "UTF-8"
-            )
-
-        val url =
-            "https://api.audius.co/v1/tracks/trending" +
-            "?limit=20" +
-            "&api_key=" +
-            encodedKey
-
-        val connection =
-            URL(url)
-                .openConnection()
-                as HttpURLConnection
-
-        connection.requestMethod = "GET"
-        connection.connectTimeout = 10000
-        connection.readTimeout = 15000
-
-        val code =
-            connection.responseCode
-
-        if (code !in 200..299) {
-            connection.disconnect()
-            return "HTTP ERROR $code"
-        }
-
-        val response =
-            connection
-                .inputStream
-                .bufferedReader()
-                .use {
-                    it.readText()
-                }
-
-        connection.disconnect()
-
-        val root =
-            JSONObject(response)
-
-        val data =
-            root.optJSONArray("data")
-                ?: return "HTTP $code • NO DATA"
-
-        if (data.length() == 0) {
-            return "HTTP $code • TRACKS 0"
-        }
-
-        for (i in 0 until data.length()) {
-
-            val track =
-                data.optJSONObject(i)
-                    ?: continue
-
-            val id =
-                track.optString("id")
-
-            val streamableValue =
-                track.opt("isStreamable")
-
-            val streamable =
-                when (streamableValue) {
-                    is Boolean -> streamableValue
-                    is String ->
-                        streamableValue.equals(
-                            "true",
-                            ignoreCase = true
-                        )
-                    else -> false
-                }
-
-            if (
-                id.isNotBlank() &&
-                streamable
-            ) {
-                return "HTTP $code • TRACKS ${data.length()} • PLAYABLE FOUND"
+            if (apiKey.isBlank()) {
+                return "API KEY EMPTY"
             }
+
+            val encodedKey =
+                URLEncoder.encode(
+                    apiKey,
+                    "UTF-8"
+                )
+
+            val url =
+                "https://api.audius.co/v1/tracks/trending" +
+                "?limit=20" +
+                "&api_key=" +
+                encodedKey
+
+            val connection =
+                URL(url)
+                    .openConnection() as HttpURLConnection
+
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 10000
+            connection.readTimeout = 15000
+
+            val code =
+                connection.responseCode
+
+            if (code !in 200..299) {
+                connection.disconnect()
+                return "HTTP ERROR $code"
+            }
+
+            val response =
+                connection.inputStream
+                    .bufferedReader()
+                    .use {
+                        it.readText()
+                    }
+
+            connection.disconnect()
+
+            val root =
+                JSONObject(response)
+
+            val data =
+                root.optJSONArray("data")
+                    ?: return "HTTP $code • NO DATA"
+
+            if (data.length() == 0) {
+                return "HTTP $code • TRACKS 0"
+            }
+
+            for (i in 0 until data.length()) {
+
+                val track =
+                    data.optJSONObject(i)
+                        ?: continue
+
+                val id =
+                    track.optString("id")
+
+                val streamableValue =
+                    track.opt("isStreamable")
+
+                val streamable =
+                    when (streamableValue) {
+                        is Boolean -> streamableValue
+
+                        is String ->
+                            streamableValue.equals(
+                                "true",
+                                ignoreCase = true
+                            )
+
+                        else -> false
+                    }
+
+                if (
+                    id.isNotBlank() &&
+                    streamable
+                ) {
+                    return "HTTP $code • TRACKS ${data.length()} • PLAYABLE FOUND"
+                }
+            }
+
+            "HTTP $code • TRACKS ${data.length()} • NO PLAYABLE TRACKS"
+
+        } catch (e: Exception) {
+
+            "ERROR • ${e.javaClass.simpleName}: ${e.message ?: "unknown"}"
         }
-
-        return "HTTP $code • TRACKS ${data.length()} • NO PLAYABLE TRACKS"
-
-    } catch (e: Exception) {
-
-        return "ERROR • ${e.javaClass.simpleName}: ${e.message ?: "unknown"}"
-    }
-   }
     }
 }
