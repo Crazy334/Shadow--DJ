@@ -11,6 +11,7 @@ class AudiusClient {
 
     private fun getApiKey(): String {
         return try {
+
             val encoded =
                 BuildConfig.AUDIUS_API_KEY_B64
 
@@ -34,7 +35,10 @@ class AudiusClient {
         }
     }
 
-    private fun getTrendingResponse(): String? {
+    private fun getTrendingResponse(
+        genre: String = "ALL"
+    ): String? {
+
         return try {
 
             val apiKey =
@@ -50,11 +54,27 @@ class AudiusClient {
                     "UTF-8"
                 )
 
-            val url =
+            var url =
                 "https://api.audius.co/v1/tracks/trending" +
-                "?limit=20" +
+                "?limit=50" +
                 "&api_key=" +
                 encodedKey
+
+            if (
+                genre.isNotBlank() &&
+                genre != "ALL"
+            ) {
+
+                val encodedGenre =
+                    URLEncoder.encode(
+                        genre,
+                        "UTF-8"
+                    )
+
+                url +=
+                    "&genre=" +
+                    encodedGenre
+            }
 
             val connection =
                 URL(url)
@@ -73,7 +93,9 @@ class AudiusClient {
                 connection.responseCode
 
             if (code !in 200..299) {
+
                 connection.disconnect()
+
                 return null
             }
 
@@ -101,6 +123,7 @@ class AudiusClient {
     }
 
     fun testConnection(): Boolean {
+
         return try {
 
             val response =
@@ -113,11 +136,19 @@ class AudiusClient {
             root.has("data")
 
         } catch (_: Exception) {
+
             false
         }
     }
 
     fun getOneStreamUrl(): String? {
+        return getNextStreamUrl("ALL")
+    }
+
+    fun getNextStreamUrl(
+        genre: String = "ALL"
+    ): String? {
+
         return try {
 
             val apiKey =
@@ -128,7 +159,9 @@ class AudiusClient {
             }
 
             val response =
-                getTrendingResponse()
+                getTrendingResponse(
+                    genre
+                )
                     ?: return null
 
             val root =
@@ -144,7 +177,13 @@ class AudiusClient {
                     "UTF-8"
                 )
 
-            for (i in 0 until data.length()) {
+            val indexes =
+                (0 until data.length())
+                    .toMutableList()
+
+            indexes.shuffle()
+
+            for (i in indexes) {
 
                 val track =
                     data.optJSONObject(i)
@@ -163,7 +202,12 @@ class AudiusClient {
                     "/stream?api_key=" +
                     encodedKey
 
-                if (testStreamUrl(streamUrl)) {
+                if (
+                    testStreamUrl(
+                        streamUrl
+                    )
+                ) {
+
                     return streamUrl
                 }
             }
@@ -174,7 +218,7 @@ class AudiusClient {
 
             android.util.Log.e(
                 "SHADOW_AUDIUS",
-                "Stream search error: ${e.message}",
+                "Next track error: ${e.message}",
                 e
             )
 
@@ -213,11 +257,13 @@ class AudiusClient {
                 code == HttpURLConnection.HTTP_PARTIAL
 
         } catch (_: Exception) {
+
             false
         }
     }
 
     fun getDiagnostic(): String {
+
         return try {
 
             val apiKey =
@@ -271,7 +317,11 @@ class AudiusClient {
                     "/stream?api_key=" +
                     encodedKey
 
-                if (testStreamUrl(streamUrl)) {
+                if (
+                    testStreamUrl(
+                        streamUrl
+                    )
+                ) {
 
                     val title =
                         track.optString(
