@@ -31,7 +31,9 @@ fun testAudius(): Boolean {
 fun getOneAudiusStreamUrl(): String? {
     return audiusClient.getOneStreamUrl()
 }
-
+fun getAudiusDiagnostic(): String {
+    return audiusClient.getDiagnostic()
+}
 fun playOneAudiusTrack() {
     Thread {
         val streamUrl = getOneAudiusStreamUrl()
