@@ -36,14 +36,29 @@ fun playOneAudiusTrack() {
     Thread {
         val streamUrl = getOneAudiusStreamUrl()
 
-        if (streamUrl.isNullOrBlank()) {
-            return@Thread
-        }
-
         android.os.Handler(mainLooper).post {
+            if (streamUrl.isNullOrBlank()) {
+                android.widget.Toast.makeText(
+                    this,
+                    "AUDIUS: No stream URL found",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+
+                return@post
+            }
+
+            android.widget.Toast.makeText(
+                this,
+                "AUDIUS: Stream URL found",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+
             player.setMediaItem(
-                androidx.media3.common.MediaItem.fromUri(streamUrl)
+                androidx.media3.common.MediaItem.fromUri(
+                    streamUrl
+                )
             )
+
             player.prepare()
             player.play()
         }
