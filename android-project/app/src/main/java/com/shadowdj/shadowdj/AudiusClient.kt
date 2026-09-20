@@ -11,18 +11,24 @@ class AudiusClient {
 
     private fun getApiKey(): String {
         return try {
-            val encoded = BuildConfig.AUDIUS_API_KEY_B64
+
+            val encoded =
+                BuildConfig.AUDIUS_API_KEY_B64
 
             if (encoded.isBlank()) {
                 return ""
             }
 
-            val bytes = Base64.decode(
-                encoded,
-                Base64.DEFAULT
-            )
+            val bytes =
+                Base64.decode(
+                    encoded,
+                    Base64.DEFAULT
+                )
 
-            String(bytes, Charsets.UTF_8)
+            String(
+                bytes,
+                Charsets.UTF_8
+            )
 
         } catch (_: Exception) {
             ""
@@ -32,18 +38,21 @@ class AudiusClient {
     private fun getTrendingResponse(
         genre: String = "ALL"
     ): String? {
+
         return try {
 
-            val apiKey = getApiKey()
+            val apiKey =
+                getApiKey()
 
             if (apiKey.isBlank()) {
                 return null
             }
 
-            val encodedKey = URLEncoder.encode(
-                apiKey,
-                "UTF-8"
-            )
+            val encodedKey =
+                URLEncoder.encode(
+                    apiKey,
+                    "UTF-8"
+                )
 
             var url =
                 "https://api.audius.co/v1/tracks/trending" +
@@ -55,22 +64,33 @@ class AudiusClient {
                 genre.isNotBlank() &&
                 genre != "ALL"
             ) {
-                val encodedGenre = URLEncoder.encode(
-                    genre,
-                    "UTF-8"
-                )
 
-                url += "&genre=$encodedGenre"
+                val encodedGenre =
+                    URLEncoder.encode(
+                        genre,
+                        "UTF-8"
+                    )
+
+                url +=
+                    "&genre=" +
+                    encodedGenre
             }
 
             val connection =
-                URL(url).openConnection() as HttpURLConnection
+                URL(url)
+                    .openConnection() as HttpURLConnection
 
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 10000
-            connection.readTimeout = 15000
+            connection.requestMethod =
+                "GET"
 
-            val code = connection.responseCode
+            connection.connectTimeout =
+                10000
+
+            connection.readTimeout =
+                15000
+
+            val code =
+                connection.responseCode
 
             if (code !in 200..299) {
                 connection.disconnect()
@@ -101,13 +121,15 @@ class AudiusClient {
     }
 
     fun testConnection(): Boolean {
+
         return try {
 
             val response =
                 getTrendingResponse()
                     ?: return false
 
-            val root = JSONObject(response)
+            val root =
+                JSONObject(response)
 
             root.has("data")
 
@@ -126,7 +148,8 @@ class AudiusClient {
 
         return try {
 
-            val apiKey = getApiKey()
+            val apiKey =
+                getApiKey()
 
             if (apiKey.isBlank()) {
                 return null
@@ -136,7 +159,8 @@ class AudiusClient {
                 getTrendingResponse(genre)
                     ?: return null
 
-            val root = JSONObject(response)
+            val root =
+                JSONObject(response)
 
             val data =
                 root.optJSONArray("data")
@@ -202,12 +226,20 @@ class AudiusClient {
                 URL(streamUrl)
                     .openConnection() as HttpURLConnection
 
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 10000
-            connection.readTimeout = 10000
-            connection.instanceFollowRedirects = true
+            connection.requestMethod =
+                "GET"
 
-            val code = connection.responseCode
+            connection.connectTimeout =
+                10000
+
+            connection.readTimeout =
+                10000
+
+            connection.instanceFollowRedirects =
+                true
+
+            val code =
+                connection.responseCode
 
             connection.disconnect()
 
@@ -223,7 +255,8 @@ class AudiusClient {
 
         return try {
 
-            val apiKey = getApiKey()
+            val apiKey =
+                getApiKey()
 
             if (apiKey.isBlank()) {
                 return "API KEY EMPTY"
@@ -233,7 +266,8 @@ class AudiusClient {
                 getTrendingResponse()
                     ?: return "TRENDING REQUEST FAILED"
 
-            val root = JSONObject(response)
+            val root =
+                JSONObject(response)
 
             val data =
                 root.optJSONArray("data")
