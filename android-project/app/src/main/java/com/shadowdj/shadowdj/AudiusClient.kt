@@ -137,11 +137,19 @@ class AudiusClient {
                 val id =
                     track.optString("id")
 
-                val streamable =
-                    track.optBoolean(
-                        "isStreamable",
-                        false
-                    )
+                val streamableValue =
+    track.opt("isStreamable")
+
+val streamable =
+    when (streamableValue) {
+        is Boolean -> streamableValue
+        is String -> streamableValue.equals(
+            "true",
+            ignoreCase = true
+        )
+        else -> false
+    }
+                    
 
                 if (
                     id.isBlank() ||
