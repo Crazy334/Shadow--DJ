@@ -30,6 +30,11 @@ class PlaybackService : MediaSessionService() {
     private var autoDJEnabled = false
     private var autoDJGenre = "ALL"
 
+    private val queueLock =
+        Any()
+
+    private var queueLoading = false
+
     fun testAudius(): Boolean {
         return audiusClient.testConnection()
     }
@@ -112,16 +117,27 @@ class PlaybackService : MediaSessionService() {
         player.addListener(
             object : Player.Listener {
 
-                override fun onPlaybackStateChanged(
-                    playbackState: Int
+                override fun onMediaItemTransition(
+                    mediaItem:
+                        androidx.media3.common.MediaItem?,
+                    reason: Int
                 ) {
 
+                    if (!autoDJEnabled) {
+                        return
+                    }
+
+                    val currentIndex =
+                        player.currentMediaItemIndex
+
+                    val totalItems =
+                        player.mediaItemCount
+
                     if (
-                        playbackState ==
-                        Player.STATE_ENDED &&
-                        autoDJEnabled
+                        currentIndex >=
+                        totalItems - 1
                     ) {
-                        playNextAutoDJTrack()
+                        loadMoreAutoDJTracks()
                     }
                 }
             }
@@ -155,10 +171,11 @@ class PlaybackService : MediaSessionService() {
         if (player.hasNextMediaItem()) {
 
             player.seekToNext()
+            player.play()
 
         } else if (autoDJEnabled) {
 
-            playNextAutoDJTrack()
+            loadMoreAutoDJTracks()
         }
     }
 
@@ -166,6 +183,7 @@ class PlaybackService : MediaSessionService() {
 
         if (player.hasPreviousMediaItem()) {
             player.seekToPrevious()
+            player.play()
         }
     }
 
@@ -226,56 +244,156 @@ class PlaybackService : MediaSessionService() {
 
         autoDJEnabled = true
 
-        playNextAutoDJTrack()
+        player.clearMediaItems()
+
+        loadInitialAutoDJQueue()
     }
 
     fun stopAutoDJ() {
 
         autoDJEnabled = false
 
-        player.pause()
+        player.stop()
+
+        player.clearMediaItems()
     }
 
-    private fun playNextAutoDJTrack() {
+    private fun loadInitialAutoDJQueue() {
 
-        if (!autoDJEnabled) {
-            return
+        synchronized(queueLock) {
+
+            if (queueLoading) {
+                return
+            }
+
+            queueLoading = true
         }
 
         Thread {
 
-            val streamUrl =
-                audiusClient.getNextStreamUrl(
-                    autoDJGenre
-                )
+            val urls =
+                mutableListOf<String>()
+
+            repeat(3) {
+
+                if (!autoDJEnabled) {
+                    return@Thread
+                }
+
+                val streamUrl =
+                    audiusClient.getNextStreamUrl(
+                        autoDJGenre
+                    )
+
+                if (!streamUrl.isNullOrBlank()) {
+                    urls.add(streamUrl)
+                }
+            }
 
             android.os.Handler(
                 mainLooper
             ).post {
 
+                synchronized(queueLock) {
+                    queueLoading = false
+                }
+
                 if (!autoDJEnabled) {
                     return@post
                 }
 
-                if (streamUrl.isNullOrBlank()) {
+                if (urls.isEmpty()) {
 
                     android.widget.Toast.makeText(
                         this,
-                        "AUTO DJ: No playable track found",
+                        "AUTO DJ: No playable tracks found",
                         android.widget.Toast.LENGTH_LONG
                     ).show()
 
                     return@post
                 }
 
-                player.setMediaItem(
-                    androidx.media3.common.MediaItem.fromUri(
-                        streamUrl
-                    )
+                val mediaItems =
+                    urls.map {
+                        androidx.media3.common.MediaItem.fromUri(
+                            it
+                        )
+                    }
+
+                player.setMediaItems(
+                    mediaItems
                 )
 
                 player.prepare()
                 player.play()
+            }
+
+        }.start()
+    }
+
+    private fun loadMoreAutoDJTracks() {
+
+        if (!autoDJEnabled) {
+            return
+        }
+
+        synchronized(queueLock) {
+
+            if (queueLoading) {
+                return
+            }
+
+            queueLoading = true
+        }
+
+        Thread {
+
+            val urls =
+                mutableListOf<String>()
+
+            repeat(2) {
+
+                if (!autoDJEnabled) {
+                    return@Thread
+                }
+
+                val streamUrl =
+                    audiusClient.getNextStreamUrl(
+                        autoDJGenre
+                    )
+
+                if (!streamUrl.isNullOrBlank()) {
+                    urls.add(streamUrl)
+                }
+            }
+
+            android.os.Handler(
+                mainLooper
+            ).post {
+
+                synchronized(queueLock) {
+                    queueLoading = false
+                }
+
+                if (!autoDJEnabled) {
+                    return@post
+                }
+
+                for (url in urls) {
+
+                    player.addMediaItem(
+                        androidx.media3.common.MediaItem.fromUri(
+                            url
+                        )
+                    )
+                }
+
+                if (
+                    player.playbackState ==
+                    Player.STATE_ENDED
+                ) {
+                    player.play()
+                }
             }
 
         }.start()
