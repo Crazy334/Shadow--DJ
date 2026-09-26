@@ -35,6 +35,35 @@ class AudiusClient {
         }
     }
 
+    private fun getAudiusGenre(
+        genre: String
+    ): String {
+
+        return when (genre.trim()) {
+
+            "Techno" ->
+                "Techno"
+
+            "House" ->
+                "House"
+
+            "EDM" ->
+                "Electronic"
+
+            "Rock" ->
+                "Rock"
+
+            "R&B / Hip-Hop" ->
+                "R&B"
+
+            "Country" ->
+                "Country"
+
+            else ->
+                genre
+        }
+    }
+
     private fun getTrendingResponse(
         genre: String = "ALL"
     ): String? {
@@ -65,9 +94,12 @@ class AudiusClient {
                 genre != "ALL"
             ) {
 
+                val audiusGenre =
+                    getAudiusGenre(genre)
+
                 val encodedGenre =
                     URLEncoder.encode(
-                        genre,
+                        audiusGenre,
                         "UTF-8"
                     )
 
@@ -139,11 +171,11 @@ class AudiusClient {
     }
 
     fun getOneStreamUrl(): String? {
-        return getNextStreamUrl("ALL")
+        return getNextStreamUrl("Techno")
     }
 
     fun getNextStreamUrl(
-        genre: String = "ALL"
+        genre: String = "Techno"
     ): String? {
 
         return try {
