@@ -28,7 +28,7 @@ class PlaybackService : MediaSessionService() {
         AudiusClient()
 
     private var autoDJEnabled = false
-    private var autoDJGenre = "ALL"
+    private var autoDJGenre = "Techno"
 
     private val queueLock =
         Any()
@@ -135,7 +135,7 @@ class PlaybackService : MediaSessionService() {
 
                     if (
                         currentIndex >=
-                        totalItems - 1
+                        totalItems - 2
                     ) {
                         loadMoreAutoDJTracks()
                     }
@@ -232,12 +232,12 @@ class PlaybackService : MediaSessionService() {
     }
 
     fun startAutoDJ(
-        genre: String = "ALL"
+        genre: String = "Techno"
     ) {
 
         autoDJGenre =
             if (genre.isBlank()) {
-                "ALL"
+                "Techno"
             } else {
                 genre
             }
@@ -274,7 +274,7 @@ class PlaybackService : MediaSessionService() {
             val urls =
                 mutableListOf<String>()
 
-            repeat(3) {
+            repeat(10) {
 
                 if (!autoDJEnabled) {
                     return@Thread
@@ -351,7 +351,7 @@ class PlaybackService : MediaSessionService() {
             val urls =
                 mutableListOf<String>()
 
-            repeat(2) {
+            repeat(5) {
 
                 if (!autoDJEnabled) {
                     return@Thread
@@ -405,7 +405,7 @@ class PlaybackService : MediaSessionService() {
 
         autoDJGenre =
             if (genre.isBlank()) {
-                "ALL"
+                "Techno"
             } else {
                 genre
             }
