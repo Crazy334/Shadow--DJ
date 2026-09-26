@@ -169,22 +169,12 @@ class MainActivity : AppCompatActivity() {
 
         val genres =
             arrayOf(
-                "ALL",
-                "Electronic",
-                "House",
-                "Tech House",
-                "Deep House",
                 "Techno",
-                "Trance",
-                "Drum & Bass",
-                "Dubstep",
-                "Disco",
-                "Electro",
-                "Progressive House",
-                "Hardstyle",
-                "Jersey Club",
-                "Future Bass",
-                "Tropical House"
+                "House",
+                "EDM",
+                "Rock",
+                "R&B / Hip-Hop",
+                "Country"
             )
 
         genreSpinner.adapter =
@@ -211,7 +201,7 @@ class MainActivity : AppCompatActivity() {
                 genreSpinner
                     .selectedItem
                     ?.toString()
-                    ?: "ALL"
+                    ?: "Techno"
 
             playbackService
                 ?.startAutoDJ(genre)
@@ -450,46 +440,46 @@ class MainActivity : AppCompatActivity() {
         )
 
         root.addView(
-    crossfader,
-    matchParams()
-)
+            crossfader,
+            matchParams()
+        )
 
-val testAudius =
-    Button(this)
+        val testAudius =
+            Button(this)
 
-testAudius.text =
-    "TEST AUDIUS"
+        testAudius.text =
+            "TEST AUDIUS"
 
-testAudius.setOnClickListener {
+        testAudius.setOnClickListener {
 
-    if (playbackService == null) {
+            if (playbackService == null) {
 
-        statusText.text =
-            "AUDIUS • SERVICE NOT CONNECTED"
+                statusText.text =
+                    "AUDIUS • SERVICE NOT CONNECTED"
 
-        android.widget.Toast.makeText(
-            this,
-            "SHADOW DJ service is not connected",
-            android.widget.Toast.LENGTH_LONG
-        ).show()
+                android.widget.Toast.makeText(
+                    this,
+                    "SHADOW DJ service is not connected",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
 
-        return@setOnClickListener
-    }
+                return@setOnClickListener
+            }
 
-    statusText.text =
-    "AUDIUS • STARTING..."
+            statusText.text =
+                "AUDIUS • STARTING..."
 
-playbackService
-    ?.playOneAudiusTrack()
+            playbackService
+                ?.playOneAudiusTrack()
 
-statusText.text =
-    "AUDIUS • PLAYING"
-}
+            statusText.text =
+                "AUDIUS • PLAYING"
+        }
 
-root.addView(
-    testAudius,
-    matchParams()
-)
+        root.addView(
+            testAudius,
+            matchParams()
+        )
 
         setContentView(root)
     }
